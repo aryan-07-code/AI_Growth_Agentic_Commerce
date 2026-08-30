@@ -1,0 +1,263 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── MERCHANT ────────────────────────────────────────────────────────────────
+
+model Merchant {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  email       String   @unique
+  website     String?
+  logoUrl     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products     Product[]
+  policies     MerchantPolicy[]
+  sessions     BuyerSession[]
+  orders       Order[]
+  agentEvents  AgentEvent[]
+  catalogIssues CatalogIssue[]
+
+  @@index([slug])
+  @@index([active])
+}
+
+// ─── PRODUCT ─────────────────────────────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(cuid())
+  merchantId  String
+  sku         String
+  title       String
+  description String
+  category    String
+  priceInr    Int      // Price in INR (e.g. 3499 for ₹3,499)
+  inventory   Int      @default(0)
+
+  // Warranty and returns
+  warrantyMonths Int?
+  returnDays     Int?
+
+  // Structured factual attributes (JSON) — never AI-modified
+  attributes  Json     @default("{}")
+
+  // AI-generated metadata — searchability layer, never overrides facts
+  aiMetadata  Json?
+
+  // Images
+  images      String[] @default([])
+
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  variants        ProductVariant[]
+  orders          Order[]
+
+  @@unique([merchantId, sku])
+  @@index([merchantId])
+  @@index([category])
+  @@index([priceInr])
+  @@index([active])
+}
+
+// ─── PRODUCT VARIANT ─────────────────────────────────────────────────────────
+
+model ProductVariant {
+  id           String   @id @default(cuid())
+  productId    String
+  name         String   // e.g. "35L / Black", "Size 10"
+  sku          String
+  priceInr     Int
+  inventory    Int      @default(0)
+  attributes   Json     @default("{}")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, sku])
+  @@index([productId])
+}
+
+// ─── MERCHANT POLICY ─────────────────────────────────────────────────────────
+
+model MerchantPolicy {
+  id          String   @id @default(cuid())
+  merchantId  String
+  type        String   // "DELIVERY", "RETURN", "WARRANTY", "PAYMENT"
+  key         String   // e.g. "bangalore_delivery_days", "return_window"
+  value       Json     // structured policy value
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([merchantId, type])
+  @@index([merchantId, key])
+}
+
+// ─── BUYER SESSION ────────────────────────────────────────────────────────────
+
+model BuyerSession {
+  id          String   @id @default(cuid())
+  merchantId  String?  // optional merchant context
+  state       String   @default("NEW")   // AgentState enum value
+  messages    Json     @default("[]")     // AgentMessage[]
+  context     Json     @default("{}")     // SessionContext
+  userAgent   String?
+  ipHash      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant    Merchant?    @relation(fields: [merchantId], references: [id])
+  agentEvents AgentEvent[]
+  order       Order?
+
+  @@index([state])
+  @@index([merchantId])
+  @@index([createdAt])
+}
+
+// ─── ORDER ────────────────────────────────────────────────────────────────────
+
+model Order {
+  id              String   @id @default(cuid())
+  sessionId       String   @unique
+  merchantId      String
+  productId       String
+  variantId       String?
+
+  // Amounts (always in paise for payment records, INR for display)
+  amountInr       Int      // Display amount in INR
+  amountPaise     Int      // Payment amount in paise = amountInr * 100
+
+  status          String   @default("PENDING")  // OrderState
+  razorpayOrderId String?  @unique
+  receipt         String   @unique
+
+  // Audit
+  policyChecked   Boolean  @default(false)
+  policyResult    Json?
+  approvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  session         BuyerSession @relation(fields: [sessionId], references: [id])
+  merchant        Merchant     @relation(fields: [merchantId], references: [id])
+  product         Product      @relation(fields: [productId], references: [id])
+  payment         Payment?
+
+  @@index([merchantId])
+  @@index([productId])
+  @@index([status])
+  @@index([razorpayOrderId])
+}
+
+// ─── PAYMENT ──────────────────────────────────────────────────────────────────
+
+model Payment {
+  id                  String   @id @default(cuid())
+  orderId             String   @unique
+  razorpayPaymentId   String?  @unique
+  razorpayOrderId     String
+  razorpaySignature   String?
+
+  amountPaise         Int
+  currency            String   @default("INR")
+  method              String?  // card, upi, netbanking, etc.
+
+  status              String   @default("PENDING")  // PaymentState
+  verified            Boolean  @default(false)
+  verifiedAt          DateTime?
+  capturedAt          DateTime?
+
+  // Webhook idempotency
+  webhookEventId      String?
+  webhookProcessedAt  DateTime?
+
+  // Error handling
+  errorCode           String?
+  errorDescription    String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  order               Order    @relation(fields: [orderId], references: [id])
+
+  @@index([razorpayPaymentId])
+  @@index([razorpayOrderId])
+  @@index([status])
+  @@index([webhookEventId])
+}
+
+// ─── AGENT EVENT (AUDIT TRAIL) ────────────────────────────────────────────────
+
+model AgentEvent {
+  id          String   @id @default(cuid())
+  sessionId   String?
+  merchantId  String?
+  agent       String   // "buyer_agent" | "merchant_agent"
+  eventType   String   // EventType enum value
+  status      String   // "SUCCESS" | "FAILURE" | "BLOCKED" | "SKIPPED"
+  input       Json?
+  decision    Json?
+  output      Json?
+  errorCode   String?
+  errorMsg    String?
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+
+  session     BuyerSession? @relation(fields: [sessionId], references: [id])
+  merchant    Merchant?     @relation(fields: [merchantId], references: [id])
+
+  @@index([sessionId])
+  @@index([merchantId])
+  @@index([eventType])
+  @@index([agent])
+  @@index([createdAt])
+}
+
+// ─── CATALOG ISSUE ────────────────────────────────────────────────────────────
+
+model CatalogIssue {
+  id          String   @id @default(cuid())
+  merchantId  String
+  productId   String?
+  severity    String   // "HIGH" | "MEDIUM" | "LOW"
+  type        String   // e.g. "MISSING_DELIVERY_SLA", "AMBIGUOUS_DESCRIPTION"
+  title       String
+  evidence    String
+  problem     String
+  proposedFix Json?
+  impact      String?
+  status      String   @default("OPEN")  // "OPEN" | "APPLIED" | "DISMISSED"
+  appliedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([productId])
+  @@index([severity])
+  @@index([status])
+}
