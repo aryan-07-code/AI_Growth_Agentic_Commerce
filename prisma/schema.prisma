@@ -183,6 +183,8 @@ model Payment {
 
   amountPaise         Int
   currency            String   @default("INR")
+  fee                 Int?     // Razorpay fee in paise
+  tax                 Int?     // Tax in paise
   method              String?  // card, upi, netbanking, etc.
 
   status              String   @default("PENDING")  // PaymentState

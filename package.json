@@ -6,22 +6,46 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch"
+  },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
   },
   "dependencies": {
-    "next": "16.3.3",
+    "@prisma/adapter-pg": "^5.22.0",
+    "@prisma/client": "^5.22.0",
+    "@types/pg": "^8.23.1",
+    "nanoid": "^6.0.1",
+    "next": "^15.2.0",
+    "openai": "^4.104.0",
+    "pg": "^8.23.0",
+    "prisma": "^5.22.0",
+    "razorpay": "^2.9.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "^15.2.0",
+    "jest": "^30.5.0",
+    "jest-environment-node": "^30.5.0",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.12",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

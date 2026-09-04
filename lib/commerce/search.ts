@@ -1,0 +1,223 @@
+import prisma from '@/lib/db';
+import type { ParsedIntent } from '@/lib/ai/schemas';
+import type { ProductWithDetails } from '@/types/commerce';
+
+/**
+ * Search the product catalog based on parsed intent.
+ * Uses PostgreSQL keyword matching + category filtering.
+ * Does NOT use vector search — pure deterministic SQL.
+ */
+export async function searchProducts(intent: ParsedIntent): Promise<ProductWithDetails[]> {
+  const { category, budget, hardRequirements } = intent;
+
+  // Build where clause
+  const where: Record<string, unknown> = {
+    active: true,
+    inventory: { gt: 0 },
+  };
+
+  // Category filter
+  if (category) {
+    // Normalize category to handle plurals and synonyms
+    const normalizedCategory = normalizeCategory(category);
+    where.category = normalizedCategory;
+  }
+
+  // Budget filter — only apply if budget.max is set (hard constraint)
+  if (budget?.max !== null && budget?.max !== undefined) {
+    where.priceInr = { lte: budget.max };
+  }
+
+  // Fetch products from DB
+  const products = await prisma.product.findMany({
+    where: where as any,
+    include: {
+      merchant: true,
+      variants: { where: { active: true } },
+    },
+    orderBy: [
+      { priceInr: 'asc' },
+    ],
+    take: 50, // Reasonable limit
+  });
+
+  // If category filter returned nothing, try keyword search fallback
+  let finalProducts = products;
+  if (products.length === 0 && category) {
+    finalProducts = await keywordFallbackSearch(intent, budget?.max ?? undefined);
+  }
+
+  // Map to ProductWithDetails
+  return finalProducts.map(mapProductToDetails);
+}
+
+/**
+ * Fallback keyword search when category filter returns nothing.
+ * Searches title, description, and AI metadata for keywords.
+ */
+async function keywordFallbackSearch(
+  intent: ParsedIntent,
+  maxPrice?: number
+): Promise<any[]> {
+  const searchTerms = buildSearchTerms(intent);
+
+  if (searchTerms.length === 0) {
+    return [];
+  }
+
+  // Build OR conditions for keyword matching
+  const orConditions = searchTerms.flatMap((term) => [
+    { title: { contains: term, mode: 'insensitive' as const } },
+    { description: { contains: term, mode: 'insensitive' as const } },
+  ]);
+
+  const where: any = {
+    active: true,
+    inventory: { gt: 0 },
+    OR: orConditions,
+  };
+
+  if (maxPrice !== undefined) {
+    where.priceInr = { lte: maxPrice };
+  }
+
+  return prisma.product.findMany({
+    where,
+    include: { merchant: true, variants: { where: { active: true } } },
+    take: 30,
+  });
+}
+
+/**
+ * Build search keywords from intent for fallback search.
+ */
+function buildSearchTerms(intent: ParsedIntent): string[] {
+  const terms: string[] = [];
+
+  if (intent.category) {
+    terms.push(intent.category);
+    // Category synonyms
+    const synonyms: Record<string, string[]> = {
+      backpack: ['backpacks', 'bag', 'pack'],
+      backpacks: ['backpack', 'bag'],
+      bags: ['bag', 'backpack', 'tote', 'duffel'],
+      shoe: ['shoes', 'footwear', 'sneaker', 'running'],
+      shoes: ['shoe', 'footwear', 'sneaker'],
+      laptop: ['laptop', 'computer', 'notebook'],
+      phone: ['phone', 'smartphone', 'mobile'],
+    };
+    const extra = synonyms[intent.category.toLowerCase()] || [];
+    terms.push(...extra);
+  }
+
+  // Add hard requirement attributes as keywords
+  for (const req of intent.hardRequirements) {
+    if (req.attribute === 'waterproof' && req.value === true) {
+      terms.push('waterproof', 'rainproof');
+    }
+  }
+
+  return [...new Set(terms)]; // deduplicate
+}
+
+/**
+ * Normalize category input to match DB category values.
+ */
+function normalizeCategory(input: string): string {
+  const map: Record<string, string> = {
+    backpack: 'backpacks',
+    'back pack': 'backpacks',
+    bags: 'bags',
+    bag: 'bags',
+    shoe: 'footwear',
+    shoes: 'footwear',
+    sneaker: 'footwear',
+    sneakers: 'footwear',
+    running: 'footwear',
+    laptop: 'electronics',
+    laptops: 'electronics',
+    phone: 'electronics',
+    phones: 'electronics',
+    electronics: 'electronics',
+    apparel: 'apparel',
+    clothing: 'apparel',
+    clothes: 'apparel',
+    accessories: 'accessories',
+    accessory: 'accessories',
+    fitness: 'fitness',
+  };
+
+  const normalized = input.toLowerCase().trim();
+  return map[normalized] || normalized;
+}
+
+/**
+ * Map a Prisma product record to ProductWithDetails.
+ */
+export function mapProductToDetails(product: any): ProductWithDetails {
+  const deliveryRules = extractDeliveryRulesFromProduct(product);
+
+  return {
+    id: product.id,
+    merchantId: product.merchantId,
+    merchantName: product.merchant?.name || 'Unknown',
+    sku: product.sku,
+    title: product.title,
+    description: product.description,
+    category: product.category,
+    priceInr: product.priceInr,
+    inventory: product.inventory,
+    warrantyMonths: product.warrantyMonths,
+    returnDays: product.returnDays,
+    attributes: product.attributes || {},
+    aiMetadata: product.aiMetadata || null,
+    deliveryRules,
+    images: product.images || [],
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+  };
+}
+
+/**
+ * Extract delivery rules from product attributes (for products with embedded delivery overrides).
+ * Standard delivery rules should be fetched from MerchantPolicy.
+ */
+function extractDeliveryRulesFromProduct(product: any): any[] {
+  const rules: any[] = [];
+  const attrs = product.attributes as any;
+
+  if (attrs?.delivery_override) {
+    for (const [dest, rule] of Object.entries(attrs.delivery_override as Record<string, any>)) {
+      rules.push({
+        destination: dest,
+        minDays: rule.minDays,
+        maxDays: rule.maxDays,
+        shippingFee: rule.fee || 0,
+        available: rule.available !== false,
+      });
+    }
+  }
+
+  return rules;
+}
+
+/**
+ * Get merchant delivery rules from MerchantPolicy table.
+ */
+export async function getMerchantDeliveryRules(merchantId: string): Promise<any[]> {
+  const policies = await prisma.merchantPolicy.findMany({
+    where: { merchantId, type: 'DELIVERY' },
+  });
+
+  return policies.map((p: any) => {
+    const dest = (p.key as string).replace('_delivery', '');
+    const val = p.value as any;
+    return {
+      destination: dest,
+      minDays: val.minDays,
+      maxDays: val.maxDays,
+      shippingFee: val.fee || 0,
+      available: val.available !== false,
+    };
+  });
+}
