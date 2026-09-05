@@ -2,33 +2,23 @@ import prisma from '@/lib/db';
 import type { ParsedIntent } from '@/lib/ai/schemas';
 import type { ProductWithDetails } from '@/types/commerce';
 
-/**
- * Search the product catalog based on parsed intent.
- * Uses PostgreSQL keyword matching + category filtering.
- * Does NOT use vector search — pure deterministic SQL.
- */
 export async function searchProducts(intent: ParsedIntent): Promise<ProductWithDetails[]> {
   const { category, budget, hardRequirements } = intent;
 
-  // Build where clause
   const where: Record<string, unknown> = {
     active: true,
     inventory: { gt: 0 },
   };
 
-  // Category filter
   if (category) {
-    // Normalize category to handle plurals and synonyms
     const normalizedCategory = normalizeCategory(category);
     where.category = normalizedCategory;
   }
 
-  // Budget filter — only apply if budget.max is set (hard constraint)
   if (budget?.max !== null && budget?.max !== undefined) {
     where.priceInr = { lte: budget.max };
   }
 
-  // Fetch products from DB
   let products = await prisma.product.findMany({
     where: where as any,
     include: {
@@ -38,10 +28,9 @@ export async function searchProducts(intent: ParsedIntent): Promise<ProductWithD
     orderBy: [
       { priceInr: 'asc' },
     ],
-    take: 50, // Reasonable limit
+    take: 50,
   });
 
-  // If category filter returned nothing OR category was not set, try keyword search
   if (products.length === 0 || !category) {
     const keywordMatches = await keywordFallbackSearch(intent, budget?.max ?? undefined);
     if (keywordMatches.length > 0) {
@@ -49,14 +38,9 @@ export async function searchProducts(intent: ParsedIntent): Promise<ProductWithD
     }
   }
 
-  // Map to ProductWithDetails
   return products.map(mapProductToDetails);
 }
 
-/**
- * Fallback keyword search when category filter returns nothing.
- * Searches title, description, and AI metadata for keywords.
- */
 async function keywordFallbackSearch(
   intent: ParsedIntent,
   maxPrice?: number
@@ -67,7 +51,6 @@ async function keywordFallbackSearch(
     return [];
   }
 
-  // Build OR conditions for keyword matching
   const orConditions = searchTerms.flatMap((term) => [
     { title: { contains: term, mode: 'insensitive' as const } },
     { description: { contains: term, mode: 'insensitive' as const } },
@@ -90,15 +73,11 @@ async function keywordFallbackSearch(
   });
 }
 
-/**
- * Build search keywords from intent for fallback search.
- */
 function buildSearchTerms(intent: ParsedIntent): string[] {
   const terms: string[] = [];
 
   if (intent.category) {
     terms.push(intent.category);
-    // Category synonyms
     const synonyms: Record<string, string[]> = {
       backpack: ['backpacks', 'bag', 'pack', 'daypack'],
       backpacks: ['backpack', 'bag', 'pack', 'daypack'],
@@ -119,7 +98,6 @@ function buildSearchTerms(intent: ParsedIntent): string[] {
     terms.push(...extra);
   }
 
-  // Extract meaningful words from rawQuery
   if (intent.rawQuery) {
     const stopWords = new Set([
       'find', 'me', 'a', 'an', 'the', 'under', 'below', 'above', 'in', 'at', 'by', 'on', 'for', 'with', 'to', 'from',
@@ -133,19 +111,15 @@ function buildSearchTerms(intent: ParsedIntent): string[] {
     terms.push(...words);
   }
 
-  // Add hard requirement attributes as keywords
   for (const req of intent.hardRequirements) {
     if (req.attribute === 'waterproof' && req.value === true) {
       terms.push('waterproof', 'rainproof');
     }
   }
 
-  return [...new Set(terms)]; // deduplicate
+  return [...new Set(terms)];
 }
 
-/**
- * Normalize category input to match DB category values.
- */
 function normalizeCategory(input: string): string {
   const map: Record<string, string> = {
     backpack: 'backpacks',
@@ -174,9 +148,6 @@ function normalizeCategory(input: string): string {
   return map[normalized] || normalized;
 }
 
-/**
- * Map a Prisma product record to ProductWithDetails.
- */
 export function mapProductToDetails(product: any): ProductWithDetails {
   const deliveryRules = extractDeliveryRulesFromProduct(product);
 
@@ -201,10 +172,6 @@ export function mapProductToDetails(product: any): ProductWithDetails {
   };
 }
 
-/**
- * Extract delivery rules from product attributes (for products with embedded delivery overrides).
- * Standard delivery rules should be fetched from MerchantPolicy.
- */
 function extractDeliveryRulesFromProduct(product: any): any[] {
   const rules: any[] = [];
   const attrs = product.attributes as any;
@@ -224,9 +191,6 @@ function extractDeliveryRulesFromProduct(product: any): any[] {
   return rules;
 }
 
-/**
- * Get merchant delivery rules from MerchantPolicy table.
- */
 export async function getMerchantDeliveryRules(merchantId: string): Promise<any[]> {
   const policies = await prisma.merchantPolicy.findMany({
     where: { merchantId, type: 'DELIVERY' },

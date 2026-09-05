@@ -22,7 +22,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    // Load session
     const session = await prisma.buyerSession.findUnique({
       where: { id: sessionId },
     });
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'SESSION_NOT_FOUND' }, { status: 404 });
     }
 
-    // Prevent messages on completed/failed sessions
     const terminalStates = [AgentState.COMPLETE, AgentState.PAYMENT_FAILED];
     if (terminalStates.includes(session.state as any)) {
       return NextResponse.json(
@@ -40,7 +38,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Validate request body
     const body = await req.json();
     const parsed = SendMessageRequestSchema.safeParse(body);
     if (!parsed.success) {
@@ -52,7 +49,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const { message, approvalGiven } = parsed.data;
 
-    // Handle approval flow immediately before running pipeline
     if (approvalGiven) {
       const context = (session.context as any) || {};
       await prisma.buyerSession.update({
@@ -74,16 +70,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // Update session state
     await prisma.buyerSession.update({
       where: { id: sessionId },
       data: { state: AgentState.UNDERSTAND_INTENT },
     });
 
-    // Run the buyer agent pipeline
     const result = await runBuyerAgent(sessionId, message);
 
-    // Persist messages and context
     const messages = (session.messages as any[]) || [];
     messages.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
     messages.push({
@@ -155,7 +148,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-// GET session state + audit trail
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params;
 

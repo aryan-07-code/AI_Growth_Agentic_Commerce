@@ -141,7 +141,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
   const [applyingFix, setApplyingFix] = useState<string | null>(null);
   const [auditing, setAuditing] = useState(false);
 
-  // ─── Add Product Modal State ───────────────────────────────────────────────
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [form, setForm] = useState<ProductForm>(defaultForm);
   const [submitting, setSubmitting] = useState(false);
@@ -152,11 +151,10 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
   const score = aiCommerceScore.total;
   const grade = aiCommerceScore.grade;
 
-  // ─── RUN SIMULATION ───────────────────────────────────────────────────────
   async function runSimulation() {
     setSimulating(true);
     try {
-      const res = await fetch(`/api/merchant/${merchantId}/simulate`, { 
+      const res = await fetch(`/api/merchant/${merchantId}/simulate`, {
         method: 'POST',
         headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
       });
@@ -169,16 +167,14 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     }
   }
 
-  // ─── RUN AUDIT ────────────────────────────────────────────────────────────
   async function runAudit() {
     setAuditing(true);
     try {
-      const res = await fetch(`/api/merchant/${merchantId}/audit`, { 
+      const res = await fetch(`/api/merchant/${merchantId}/audit`, {
         method: 'POST',
         headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
       });
       const auditData = await res.json();
-      // Refresh merchant data
       const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
         headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
       });
@@ -191,7 +187,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     }
   }
 
-  // ─── APPLY FIX ────────────────────────────────────────────────────────────
   async function applyFix(issueId: string) {
     if (!confirm('Apply this catalog fix? This requires your explicit approval.')) return;
     setApplyingFix(issueId);
@@ -202,7 +197,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         body: JSON.stringify({ confirmed: true }),
       });
       if (res.ok) {
-        // Refresh data
         const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
           headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
         });
@@ -216,7 +210,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     }
   }
 
-  // ─── ADD PRODUCT ──────────────────────────────────────────────────────────
   function openAddProduct() {
     setForm(defaultForm);
     setFormError(null);
@@ -253,7 +246,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     e.preventDefault();
     setFormError(null);
 
-    // Client-side validation
     if (!form.title.trim()) return setFormError('Product title is required.');
     if (!form.sku.trim()) return setFormError('SKU is required.');
     if (!form.description.trim()) return setFormError('Description is required.');
@@ -262,7 +254,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     const inv = parseInt(form.inventory);
     if (isNaN(inv) || inv < 0) return setFormError('Inventory must be 0 or more.');
 
-    // Build attributes
     const attributes: Record<string, unknown> = {};
     if (form.waterproof) attributes.waterproof = true;
 
@@ -291,7 +282,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         return;
       }
 
-      // Success — refresh merchant data
       const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
         headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
       });
@@ -309,7 +299,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* ─── ADD PRODUCT BUTTON ────────────────────────────────────────────── */}
       <div className="flex justify-end">
         <button
           onClick={openAddProduct}
@@ -319,10 +308,8 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         </button>
       </div>
 
-      {/* ─── TOP ROW: Score + Revenue ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        {/* AI Commerce Score */}
         <div className="card md:col-span-1">
           <p className="text-[#4a4540] text-xs uppercase tracking-widest mb-4 font-medium">AI Commerce Score</p>
           <div className="flex items-end gap-3 mb-1">
@@ -333,7 +320,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
             </span>
           </div>
 
-          {/* Score factors */}
           <div className="space-y-2 mt-4">
             {Object.entries(aiCommerceScore.factors).map(([key, val]) => {
               const label = FACTOR_LABELS[key as keyof CommerceScoreFactors];
@@ -354,10 +340,8 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
           </div>
         </div>
 
-        {/* Right column: Issues + Revenue */}
         <div className="md:col-span-2 space-y-4">
 
-          {/* Catalog Issues Summary */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[#4a4540] text-xs uppercase tracking-widest font-medium">Catalog Issues</p>
@@ -383,7 +367,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
             </div>
           </div>
 
-          {/* Revenue */}
           <div className="card">
             <p className="text-[#4a4540] text-xs uppercase tracking-widest mb-3 font-medium">
               Revenue from AI-Assisted Purchases
@@ -401,9 +384,7 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         </div>
       </div>
 
-      {/* ─── AI BUYER FUNNEL & FAILURES ───────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Funnel */}
         <div className="card">
           <p className="text-[#4a4540] text-xs uppercase tracking-widest mb-4 font-medium">AI Buyer Funnel</p>
           <div className="space-y-4">
@@ -430,7 +411,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
           </div>
         </div>
 
-        {/* Failures */}
         <div className="card flex flex-col">
           <p className="text-[#4a4540] text-xs uppercase tracking-widest mb-4 font-medium">Why didn&apos;t the AI buy?</p>
           {aiBuyerFailures.length === 0 ? (
@@ -454,7 +434,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         </div>
       </div>
 
-      {/* ─── OPEN ISSUES (AGENT DIAGNOSIS) ────────────────────────────────── */}
       {openIssues.length > 0 && (
         <div className="card">
           <p className="text-[#4a4540] text-xs uppercase tracking-widest mb-4 font-medium">Agent Diagnosis & Proposed Fixes</p>
@@ -528,7 +507,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         </div>
       )}
 
-      {/* ─── AI BUYER SIMULATION ────────────────────────────────────────── */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -554,7 +532,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* Current */}
               <div className="bg-[#111] rounded-xl p-4">
                 <p className="text-[#8a8278] text-xs uppercase tracking-widest mb-3 font-medium">Before</p>
                 {[
@@ -575,7 +552,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 ))}
               </div>
 
-              {/* Optimized */}
               <div className="bg-[#111] rounded-xl p-4 border border-[rgba(212,168,83,0.15)]">
                 <p className="text-[#d4a853] text-xs uppercase tracking-widest mb-3 font-medium">After Fixes</p>
                 {[
@@ -607,7 +583,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
         )}
       </div>
 
-      {/* ─── ADD PRODUCT MODAL ────────────────────────────────────────────── */}
       {showAddProduct && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -618,7 +593,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
             className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
             style={{ background: '#161616', border: '1px solid #2a2a2a', maxHeight: '90vh', overflowY: 'auto' }}
           >
-            {/* Header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-[#1e1e1e]">
               <div>
                 <h2 className="text-[#e8e0d0] font-semibold text-lg">Add Product to Catalog</h2>
@@ -633,16 +607,13 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
               </button>
             </div>
 
-            {/* Success banner */}
             {successMsg && (
               <div className="mx-6 mt-4 p-3 rounded-lg text-sm text-[#34a853] bg-[rgba(52,168,83,0.08)] border border-[rgba(52,168,83,0.2)]">
                 ✓ {successMsg}
               </div>
             )}
 
-            {/* Form */}
             <form onSubmit={submitProduct} className="p-6 space-y-5">
-              {/* Title + SKU */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[#8a8278] text-xs mb-1.5 font-medium uppercase tracking-wide">
@@ -674,7 +645,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 </div>
               </div>
 
-              {/* Category + Price + Inventory */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-[#8a8278] text-xs mb-1.5 font-medium uppercase tracking-wide">
@@ -723,7 +693,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-[#8a8278] text-xs mb-1.5 font-medium uppercase tracking-wide">
                   Description <span className="text-[#f56565]">*</span>
@@ -739,7 +708,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 />
               </div>
 
-              {/* Warranty + Returns */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[#8a8278] text-xs mb-1.5 font-medium uppercase tracking-wide">
@@ -771,7 +739,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 </div>
               </div>
 
-              {/* Product Attributes */}
               <div>
                 <label className="block text-[#8a8278] text-xs mb-2 font-medium uppercase tracking-wide">
                   Product Attributes
@@ -787,7 +754,6 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 </label>
               </div>
 
-              {/* Delivery Rules */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-[#8a8278] text-xs font-medium uppercase tracking-wide">
@@ -870,14 +836,12 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
                 )}
               </div>
 
-              {/* Error */}
               {formError && (
                 <div className="p-3 rounded-lg text-sm text-[#f56565] bg-[rgba(229,62,62,0.08)] border border-[rgba(229,62,62,0.2)]">
                   {formError}
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"

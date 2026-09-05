@@ -4,15 +4,6 @@ import { RankingOutputSchema, type RankingOutput } from '@/lib/ai/schemas';
 import type { ProductWithDetails, ConstraintCheck } from '@/types/commerce';
 import type { ParsedIntent } from '@/lib/ai/schemas';
 
-/**
- * AI ranking module — sends ONLY eligible products to the LLM for ranking.
- *
- * CRITICAL SAFETY INVARIANT:
- * 1. Only eligible products (passed all constraints) are sent to the LLM.
- * 2. The LLM output is schema-validated before use.
- * 3. The selectedProductId is verified to be in the eligible list.
- * 4. If the LLM selects an ineligible product, the result is rejected.
- */
 export async function rankProducts(
   eligibleProducts: ProductWithDetails[],
   intent: ParsedIntent,
@@ -23,7 +14,6 @@ export async function rankProducts(
   }
 
   if (eligibleProducts.length === 1) {
-    // Only one eligible product — no need for LLM
     return buildSingleProductRanking(eligibleProducts[0], constraintResults);
   }
 
@@ -32,7 +22,6 @@ export async function rankProducts(
   }
 
   try {
-    // Build ranking context
     const rankingContext = buildRankingContext(eligibleProducts, intent, constraintResults);
 
     const response = await openai.chat.completions.create({
@@ -42,7 +31,7 @@ export async function rankProducts(
         { role: 'user', content: rankingContext },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.1, // Low temperature for consistent ranking
+      temperature: 0.1,
       max_tokens: 600,
     });
 
@@ -58,7 +47,6 @@ export async function rankProducts(
       throw new Error('OpenAI ranking response was not valid JSON');
     }
 
-    // Validate schema
     const validated = RankingOutputSchema.safeParse(parsed);
     if (!validated.success) {
       throw new Error(
@@ -68,7 +56,6 @@ export async function rankProducts(
 
     const ranking = validated.data;
 
-    // CRITICAL: Verify the selected product is in the eligible list
     const eligibleIds = eligibleProducts.map((p) => p.id);
     if (!eligibleIds.includes(ranking.selectedProductId)) {
       throw new Error(
@@ -83,16 +70,13 @@ export async function rankProducts(
   }
 }
 
-/**
- * Smart fallback ranking when LLM is unavailable or quota is exceeded.
- */
 function buildSmartFallbackRanking(
   eligibleProducts: ProductWithDetails[],
   intent: ParsedIntent,
   constraintResults: ConstraintCheck[]
 ): RankingOutput {
   const queryLower = (intent.rawQuery || '').toLowerCase();
-  
+
   const scored = eligibleProducts.map((p) => {
     let score = 0;
     const titleLower = p.title.toLowerCase();
@@ -141,9 +125,6 @@ function buildSmartFallbackRanking(
   };
 }
 
-/**
- * Build the ranking prompt context with full product details.
- */
 function buildRankingContext(
   products: ProductWithDetails[],
   intent: ParsedIntent,
@@ -164,7 +145,7 @@ function buildRankingContext(
       inventory: p.inventory,
       attributes: p.attributes,
       deliveryEstimate: cr?.deliveryEstimate,
-      description: p.description.substring(0, 200), // truncate for token efficiency
+      description: p.description.substring(0, 200),
     };
   });
 
@@ -188,9 +169,6 @@ function buildRankingContext(
   });
 }
 
-/**
- * Build a ranking result for a single eligible product (no LLM needed).
- */
 function buildSingleProductRanking(
   product: ProductWithDetails,
   constraintResults: ConstraintCheck[]

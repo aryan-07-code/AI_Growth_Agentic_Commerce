@@ -9,7 +9,7 @@ interface PageProps {
 async function getMerchantData(merchantId: string) {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/merchant/${merchantId}`,
-    { 
+    {
       cache: 'no-store',
       headers: {
         'X-Agent-Role': 'MERCHANT_AGENT',
@@ -29,7 +29,6 @@ export default async function MerchantDashboardPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="border-b border-[#0c83ff]/20 px-6 py-4 flex items-center justify-between sticky top-0 bg-[#050a14]/85 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2 group">

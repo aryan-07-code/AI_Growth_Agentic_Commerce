@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 
-// Types
 interface IntentChip {
   label: string;
   icon: string;
@@ -93,7 +92,6 @@ function getProductImage(product?: { images?: string[]; category?: string; title
   const cat = (product?.category || '').toLowerCase();
   const t = (product?.title || '').toLowerCase();
 
-  // 1. High precision title & hardware checks
   if (t.includes('ssd') || t.includes('storage') || t.includes('drive') || t.includes('samsung t7') || t.includes('sandisk')) {
     return '/products/ssd.jpg';
   }
@@ -122,12 +120,10 @@ function getProductImage(product?: { images?: string[]; category?: string; title
     return '/products/bags.jpg';
   }
 
-  // 2. Explicit product image from database if valid
   if (product?.images && product.images.length > 0 && product.images[0] && product.images[0].startsWith('/products/')) {
     return product.images[0];
   }
 
-  // 3. Category fallbacks
   if (cat.includes('electronics') || t.includes('charger') || t.includes('mouse') || t.includes('keyboard')) {
     return '/products/laptop.jpg';
   }
@@ -172,7 +168,6 @@ export default function BuyerPage() {
     };
   }, [isSearching]);
 
-  // ─── SUBMIT QUERY ──────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim() || phase === 'processing') return;
@@ -184,7 +179,6 @@ export default function BuyerPage() {
     setOrderId(null);
 
     try {
-      // Create session
       const sessionRes = await fetch('/api/buyer/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Role': 'BUYER_AGENT' },
@@ -196,7 +190,6 @@ export default function BuyerPage() {
       const newSessionId = sessionData.sessionId;
       setSessionId(newSessionId);
 
-      // Send message
       setPhase('showing_intent');
       const msgRes = await fetch(`/api/buyer/sessions/${newSessionId}/message`, {
         method: 'POST',
@@ -207,7 +200,6 @@ export default function BuyerPage() {
       const msgData = await msgRes.json();
       setAgentStep(msgData);
 
-      // Route based on state
       if (msgData.state === 'NO_MATCH') {
         setPhase('no_match');
       } else if (msgData.state === 'AWAIT_APPROVAL' || msgData.selectedProduct) {
@@ -223,20 +215,17 @@ export default function BuyerPage() {
     }
   }
 
-  // ─── CONFIRM PURCHASE ──────────────────────────────────────────────────────
   async function handleConfirmPurchase() {
     if (!sessionId || !agentStep?.selectedProduct) return;
     setPhase('creating_order');
 
     try {
-      // Set approval on session
       await fetch(`/api/buyer/sessions/${sessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Role': 'BUYER_AGENT' },
         body: JSON.stringify({ message: 'confirm', approvalGiven: true }),
       });
 
-      // Create order
       const orderRes = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Agent-Role': 'BUYER_AGENT' },
@@ -260,7 +249,6 @@ export default function BuyerPage() {
       setCheckoutConfig(orderData.checkout);
       setPhase('checkout');
 
-      // Load Razorpay checkout
       if (!orderData.checkout?.demoMode) {
         await openRazorpayCheckout(orderData.checkout, sessionId, setPhase, setAuditTrail);
       }
@@ -270,7 +258,6 @@ export default function BuyerPage() {
     }
   }
 
-  // ─── LOAD AUDIT TRAIL ─────────────────────────────────────────────────────
   async function loadAuditTrail() {
     if (!sessionId) return;
     const res = await fetch(`/api/buyer/sessions/${sessionId}/message`, {
@@ -280,7 +267,6 @@ export default function BuyerPage() {
     setAuditTrail(data.auditTrail || []);
   }
 
-  // ─── RESET ────────────────────────────────────────────────────────────────
   function handleReset() {
     setQuery('');
     setPhase('idle');
@@ -292,7 +278,6 @@ export default function BuyerPage() {
     inputRef.current?.focus();
   }
 
-  // ─── BUILD INTENT CHIPS ────────────────────────────────────────────────────
   function buildChips(intent: Record<string, unknown>): IntentChip[] {
     const chips: IntentChip[] = [];
     const budget = intent.budget as any;
@@ -311,12 +296,10 @@ export default function BuyerPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#050a14] relative overflow-hidden">
-      {/* Ambient background glows */}
       <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[600px] h-[350px] bg-gradient-to-br from-[#0c83ff]/15 via-[#00d2ff]/10 to-transparent blur-[120px] pointer-events-none -z-0" />
       <div className="absolute top-[400px] right-[-100px] w-[400px] h-[400px] bg-[#00d2ff]/10 blur-[130px] pointer-events-none -z-0" />
       <div className="absolute bottom-[-50px] left-[-100px] w-[500px] h-[350px] bg-[#0c83ff]/10 blur-[140px] pointer-events-none -z-0" />
 
-      {/* Header */}
       <header className="border-b border-[#0c83ff]/20 px-6 py-4 flex items-center justify-between sticky top-0 bg-[#050a14]/85 backdrop-blur-xl z-20 shadow-[0_4px_20px_rgba(0,0,0,0.6)]">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5 group">
@@ -343,8 +326,6 @@ export default function BuyerPage() {
 
       <div className="flex-1 max-w-3xl mx-auto w-full px-4 py-10 relative z-10">
 
-        {/* ─── IDLE / INPUT STATE ─────────────────────────────────────────── */}
-        {/* ─── IDLE / SEARCHING STATE ─────────────────────────────────────────── */}
         {(phase === 'idle' || isSearching) && (
           <div className="animate-fade-in">
             {phase === 'idle' ? (
@@ -376,7 +357,6 @@ export default function BuyerPage() {
               </div>
             )}
 
-            {/* Search Input Card */}
             <form onSubmit={handleSubmit} className="mb-8">
               <div className={`card relative overflow-hidden border ${isSearching ? 'border-[#0c83ff]/60 shadow-[0_0_35px_rgba(12,131,255,0.25)]' : 'border-[#0c83ff]/20 focus-within:border-[#0c83ff]/60 focus-within:shadow-[0_0_35px_rgba(12,131,255,0.25)]'} transition-all duration-300 p-5 rounded-2xl bg-[#0b1528]/85 backdrop-blur-2xl`}>
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#0c83ff] via-[#00d2ff] to-[#0c83ff] opacity-70" />
@@ -863,7 +843,7 @@ export default function BuyerPage() {
               <div className="card-hero p-6 sm:p-7 rounded-2xl border border-[#0c83ff]/40 bg-gradient-to-b from-[#0b1528] to-[#071022] relative overflow-hidden shadow-[0_0_40px_rgba(12,131,255,0.25)]">
                 {/* Radiant top aura */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0c83ff] via-[#00d2ff] to-[#0c83ff]" />
-                
+
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-2">
                     <span className="badge badge-blue text-xs font-bold tracking-wider py-1 px-3 shadow-[0_0_12px_rgba(12,131,255,0.3)]">
@@ -938,7 +918,6 @@ export default function BuyerPage() {
                   </div>
                 </div>
 
-                {/* Delivery estimate */}
                 {agentStep.constraintResults && (() => {
                   const cr = agentStep.constraintResults?.find(
                     (r) => r.productId === agentStep.selectedProduct!.id
@@ -956,7 +935,6 @@ export default function BuyerPage() {
                   );
                 })()}
 
-                {/* Why this one? Reasoning */}
                 {agentStep.ranking && (
                   <div className="mb-6 p-4 rounded-xl bg-black/30 border border-white/5">
                     <p className="text-[#38bdf8] text-xs uppercase tracking-wider mb-2.5 font-bold">
@@ -985,7 +963,6 @@ export default function BuyerPage() {
                   </div>
                 )}
 
-                {/* Action buttons */}
                 <div className="flex flex-col sm:flex-row gap-3 pt-5 border-t border-white/10">
                   <button
                     id="confirm-pay-btn"
@@ -1012,7 +989,6 @@ export default function BuyerPage() {
               </div>
             )}
 
-            {/* CHECKOUT / GATEWAY DISPATCH */}
             {phase === 'checkout' && checkoutConfig && (
               <div className="card p-6 rounded-2xl border border-[#00d2ff]/30 bg-[#0b1528]/90 backdrop-blur-xl">
                 <div className="flex items-center justify-between mb-4">
@@ -1083,7 +1059,6 @@ export default function BuyerPage() {
               </div>
             )}
 
-            {/* COMPLETE / AUDIT TRAIL */}
             {phase === 'complete' && (
               <div className="animate-fade-in space-y-6">
                 <div className="card p-6 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 shadow-[0_0_35px_rgba(16,185,129,0.2)]">
@@ -1100,7 +1075,6 @@ export default function BuyerPage() {
                   </div>
                 </div>
 
-                {/* Audit Trail */}
                 {auditTrail.length > 0 && (
                   <div className="card p-6 rounded-2xl border border-[#0c83ff]/20 bg-[#0b1528]/85 backdrop-blur-xl">
                     <div className="flex items-center justify-between mb-4">
@@ -1160,8 +1134,6 @@ export default function BuyerPage() {
   );
 }
 
-// ─── RAZORPAY CHECKOUT ────────────────────────────────────────────────────────
-
 async function openRazorpayCheckout(
   config: Record<string, unknown>,
   sessionId: string,
@@ -1218,7 +1190,6 @@ async function openRazorpayCheckout(
           },
           modal: {
             ondismiss: () => {
-              // Stay on checkout screen if dismissed so user can retry or simulate
               resolve();
             },
           },

@@ -19,7 +19,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     throw error;
   }
 
-  // Verify merchant exists
   const merchant = await prisma.merchant.findUnique({ where: { id: merchantId } });
   if (!merchant) {
     return NextResponse.json({ error: 'MERCHANT_NOT_FOUND' }, { status: 404 });
@@ -34,7 +33,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const { title, sku, category, priceInr, inventory, description, warrantyMonths, returnDays, attributes, deliveryRules } = body;
 
-  // ─── Validate required fields ─────────────────────────────────────────────
   if (!title || typeof title !== 'string' || title.trim().length === 0) {
     return NextResponse.json({ error: 'MISSING_TITLE' }, { status: 400 });
   }
@@ -54,7 +52,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'MISSING_DESCRIPTION' }, { status: 400 });
   }
 
-  // ─── Check SKU uniqueness for this merchant ────────────────────────────────
   const existing = await prisma.product.findUnique({
     where: { merchantId_sku: { merchantId, sku: sku.trim() } },
   });
@@ -62,12 +59,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'SKU_ALREADY_EXISTS', message: `SKU "${sku}" already exists for this merchant.` }, { status: 409 });
   }
 
-  // ─── Build attributes JSON (includes delivery_override + custom attrs) ─────
   const productAttributes: Record<string, unknown> = {
     ...(typeof attributes === 'object' && attributes !== null ? attributes : {}),
   };
 
-  // Embed delivery rules as delivery_override in attributes (matches search.ts pattern)
   if (Array.isArray(deliveryRules) && deliveryRules.length > 0) {
     const deliveryOverride: Record<string, unknown> = {};
     for (const rule of deliveryRules) {
@@ -85,7 +80,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     }
   }
 
-  // ─── Create product ────────────────────────────────────────────────────────
   try {
     const product = await prisma.product.create({
       data: {

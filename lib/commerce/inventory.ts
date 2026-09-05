@@ -6,10 +6,6 @@ export interface InventoryCheckResult {
   reservable: boolean;
 }
 
-/**
- * Check inventory for a product.
- * This is a deterministic check — the LLM never calls this.
- */
 export function checkInventory(
   product: ProductWithDetails,
   requestedQuantity = 1
@@ -24,15 +20,11 @@ export function checkInventory(
   };
 }
 
-/**
- * Check inventory for a specific variant.
- */
 export function checkVariantInventory(
   product: ProductWithDetails,
   variantId: string,
   requestedQuantity = 1
 ): InventoryCheckResult {
-  // If no variants, use product-level inventory
   const variant = (product as any).variants?.find((v: any) => v.id === variantId);
 
   if (!variant) {

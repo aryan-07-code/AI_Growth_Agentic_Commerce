@@ -29,9 +29,6 @@ export async function POST(request: NextRequest) {
 
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature, sessionId } = parsed.data;
 
-    // ─── 1. LOAD ORDER FROM DATABASE (not from browser) ──────────────────────
-    // SECURITY: We look up the expected Razorpay order ID from OUR database.
-    // We NEVER trust the razorpay_order_id from the browser alone.
     const order = await prisma.order.findUnique({
       where: { sessionId },
       include: { payment: true },
@@ -45,7 +42,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ORDER_NOT_INITIALIZED' }, { status: 409 });
     }
 
-    // Verify the razorpay_order_id from browser matches our DB record
     if (order.razorpayOrderId !== razorpay_order_id) {
       console.error('[verify] Order ID mismatch:', {
         expected: order.razorpayOrderId,
@@ -69,7 +65,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check for duplicate verification
     if (order.payment?.verified) {
       return NextResponse.json({
         success: true,
@@ -80,7 +75,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ─── 2. VERIFY SIGNATURE ──────────────────────────────────────────────────
     let signatureValid = false;
 
     if (
@@ -88,7 +82,6 @@ export async function POST(request: NextRequest) {
       razorpay_order_id.startsWith('demo_order_') ||
       !process.env.RAZORPAY_KEY_SECRET
     ) {
-      // Demo/test mode simulation
       console.log('[verify] Demo simulation verified for order:', order.razorpayOrderId);
       signatureValid = true;
     } else {
@@ -110,7 +103,6 @@ export async function POST(request: NextRequest) {
         errorMsg: 'Payment signature verification failed',
       });
 
-      // Payment remains unverified — order does NOT become PAID
       await prisma.buyerSession.update({
         where: { id: sessionId },
         data: { state: AgentState.VERIFICATION_FAILED },
@@ -125,10 +117,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ─── 3. UPDATE PAYMENT AND ORDER ─────────────────────────────────────────
     const now = new Date();
 
-    // Update payment record
     if (order.payment) {
       await prisma.payment.update({
         where: { orderId: order.id },
@@ -155,13 +145,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Update order status to PAID (via client-side verification)
     await prisma.order.update({
       where: { id: order.id },
       data: { status: OrderState.PAID },
     });
 
-    // Update session to COMPLETE
     await prisma.buyerSession.update({
       where: { id: sessionId },
       data: { state: AgentState.COMPLETE },

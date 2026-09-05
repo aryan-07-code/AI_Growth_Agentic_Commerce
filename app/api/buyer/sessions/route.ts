@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, userAgent } = parsed.data;
 
-    // Validate merchantId if provided
     if (merchantId) {
       const merchant = await prisma.merchant.findUnique({ where: { id: merchantId } });
       if (!merchant || !merchant.active) {
@@ -36,7 +35,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create session
     const session = await prisma.buyerSession.create({
       data: {
         merchantId: merchantId || null,

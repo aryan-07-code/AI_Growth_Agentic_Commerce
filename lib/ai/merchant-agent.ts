@@ -7,11 +7,6 @@ import { EventType } from '@/types/agent';
 import type { CommerceScore, CommerceScoreFactors, SimulationResult } from '@/types/commerce';
 import { runBuyerAgent } from './buyer-agent';
 
-/**
- * Calculate the AI Commerce Score for a merchant.
- * DETERMINISTIC — calculated in code, not by the LLM.
- * Score: 0-100 based on structured catalog quality factors.
- */
 export async function calculateCommerceScore(merchantId: string): Promise<CommerceScore> {
   const products = await prisma.product.findMany({
     where: { merchantId, active: true },
@@ -39,7 +34,6 @@ export async function calculateCommerceScore(merchantId: string): Promise<Commer
     };
   }
 
-  // ─── FACTOR 1: Structured Attributes (0-20) ───────────────────────────────
   const attrScore = products.reduce((sum: number, p: any) => {
     const attrs = p.attributes as Record<string, unknown>;
     const keyAttributes = ['waterproof', 'water_resistant', 'capacity_litres', 'laptop_size_inches', 'material', 'use_cases'];
@@ -48,44 +42,36 @@ export async function calculateCommerceScore(merchantId: string): Promise<Commer
   }, 0) / products.length;
   const structuredAttributes = Math.round(attrScore * 20);
 
-  // ─── FACTOR 2: Delivery Clarity (0-20) ───────────────────────────────────
   const hasDeliveryPolicies = policies.length >= 2;
-  const deliveryCoverage = Math.min(policies.length / 4, 1); // Full score at 4+ cities
+  const deliveryCoverage = Math.min(policies.length / 4, 1);
   const deliveryClarity = Math.round(
     (hasDeliveryPolicies ? 0.5 : 0) * 20 + deliveryCoverage * 10
   );
 
-  // ─── FACTOR 3: Inventory Clarity (0-10) ──────────────────────────────────
   const inventoryDefined = products.filter((p: any) => p.inventory > 0).length / products.length;
   const inventoryClarity = Math.round(inventoryDefined * 10);
 
-  // ─── FACTOR 4: Variant Clarity (0-10) ────────────────────────────────────
   const productsWithVariants = products.filter((p: any) => (p.variants?.length ?? 0) > 0).length;
   const variantRatio = productsWithVariants / products.length;
   const variantClarity = Math.round(variantRatio * 10);
 
-  // ─── FACTOR 5: Return Policy Clarity (0-10) ──────────────────────────────
   const hasReturn = products.filter((p: any) => p.returnDays && p.returnDays > 0).length;
   const returnPolicyClarity = Math.round((hasReturn / products.length) * 10);
 
-  // ─── FACTOR 6: Warranty Clarity (0-10) ───────────────────────────────────
   const hasWarranty = products.filter((p: any) => p.warrantyMonths && p.warrantyMonths > 0).length;
   const warrantyClarity = Math.round((hasWarranty / products.length) * 10);
 
-  // ─── FACTOR 7: AI-Readable Descriptions (0-10) ───────────────────────────
   const hasAiMeta = products.filter((p: any) => {
     const meta = p.aiMetadata as any;
     return meta?.searchTerms?.length >= 3 && meta?.semanticSummary;
   }).length;
   const aiReadableDescription = Math.round((hasAiMeta / products.length) * 10);
 
-  // ─── FACTOR 8: Catalog Completeness (0-10) ───────────────────────────────
   const hasAllFields = products.filter(
     (p: any) => p.title && p.description && p.priceInr > 0 && p.sku && p.category
   ).length;
   const catalogCompleteness = Math.round((hasAllFields / products.length) * 10);
 
-  // ─── TOTAL ────────────────────────────────────────────────────────────────
   const factors: CommerceScoreFactors = {
     structuredAttributes,
     deliveryClarity,
@@ -103,15 +89,10 @@ export async function calculateCommerceScore(merchantId: string): Promise<Commer
   return { total, factors, grade };
 }
 
-/**
- * Run AI buyer simulations against a merchant's catalog.
- * Runs the same buyer pipeline against synthetic intents.
- */
 export async function runBuyerSimulation(
   merchantId: string,
   catalogVersion: 'current' | 'optimized' = 'current'
 ): Promise<SimulationResult> {
-  // Synthetic buyer intents for simulation
   const syntheticIntents = [
     'Find me a waterproof backpack under ₹4,000 that reaches Bangalore by Friday',
     'I need a laptop bag for a 15-inch laptop under ₹3,000',
@@ -128,7 +109,6 @@ export async function runBuyerSimulation(
   let passedConstraints = 0;
   let selected = 0;
 
-  // Create temporary simulation session
   for (const intentStr of syntheticIntents) {
     const simSessionId = `sim_${merchantId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -172,15 +152,12 @@ export async function runBuyerSimulation(
     discoveryRate: discovered / total,
     constraintMatchRate: passedConstraints / total,
     selectionRate: selected / total,
-    checkoutReadiness: (selected / total) * 0.85, // Approx checkout readiness
-    estimatedConversion: (selected / total) * 0.12, // Estimated 12% of checkout-ready = conversion
+    checkoutReadiness: (selected / total) * 0.85,
+    estimatedConversion: (selected / total) * 0.12,
     details,
   };
 }
 
-/**
- * Run AI catalog audit using LLM to identify catalog issues.
- */
 export async function auditCatalog(merchantId: string): Promise<void> {
   const merchant = await prisma.merchant.findUnique({
     where: { id: merchantId },
@@ -248,7 +225,6 @@ export async function auditCatalog(merchantId: string): Promise<void> {
       return;
     }
 
-    // Persist new issues (avoiding duplicates by type)
     const existingIssues = await prisma.catalogIssue.findMany({
       where: { merchantId },
       select: { type: true },

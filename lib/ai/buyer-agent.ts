@@ -25,14 +25,6 @@ export interface BuyerAgentResult {
   clarificationQuestion?: string;
 }
 
-/**
- * Run the full buyer agent pipeline:
- * 1. Parse intent from natural language
- * 2. Search products
- * 3. Apply deterministic constraints
- * 4. AI rank eligible products
- * 5. Return recommendation
- */
 export async function runBuyerAgent(
   sessionId: string,
   userMessage: string
@@ -40,7 +32,6 @@ export async function runBuyerAgent(
   const startTime = Date.now();
 
   try {
-    // ─── STEP 1: PARSE INTENT ──────────────────────────────────────────────
     const intent = await parseIntent(userMessage, sessionId);
 
     if (intent.clarificationNeeded) {
@@ -63,7 +54,6 @@ export async function runBuyerAgent(
       durationMs: Date.now() - startTime,
     });
 
-    // ─── STEP 2: SEARCH PRODUCTS ───────────────────────────────────────────
     const candidates = await searchProducts(intent);
 
     await logEvent({
@@ -86,7 +76,6 @@ export async function runBuyerAgent(
       };
     }
 
-    // ─── STEP 3: APPLY CONSTRAINTS ─────────────────────────────────────────
     const constraintResults = await applyConstraints(candidates, intent);
     const eligibleProducts = filterEligible(candidates, constraintResults);
 
@@ -129,13 +118,11 @@ export async function runBuyerAgent(
       };
     }
 
-    // ─── STEP 4: AI RANK ELIGIBLE PRODUCTS ────────────────────────────────
     let ranking: RankingOutput;
 
     try {
       ranking = await rankProducts(eligibleProducts, intent, constraintResults);
     } catch (rankError) {
-      // AI ranking failed — fall back to first eligible product
       console.error('[buyer-agent] AI ranking failed, using fallback:', rankError);
       ranking = {
         selectedProductId: eligibleProducts[0].id,
@@ -164,7 +151,6 @@ export async function runBuyerAgent(
       },
     });
 
-    // ─── STEP 5: BUILD EXPLANATION MESSAGE ────────────────────────────────
     const agentMessage = buildRecommendationMessage(
       selectedProduct,
       ranking,
@@ -192,15 +178,11 @@ export async function runBuyerAgent(
   }
 }
 
-/**
- * Parse natural language query into structured intent using OpenAI.
- */
 async function parseIntent(
   userMessage: string,
   sessionId: string
 ): Promise<ParsedIntent> {
   if (!process.env.OPENAI_API_KEY) {
-    // Demo fallback when OpenAI is not configured
     return buildDemoIntent(userMessage);
   }
 
@@ -232,7 +214,6 @@ async function parseIntent(
     const validated = ParsedIntentSchema.safeParse(parsed);
     if (!validated.success) {
       console.warn('[buyer-agent] Intent schema validation failed:', validated.error);
-      // Try to extract what we can
       return buildFallbackIntent(userMessage, parsed as Record<string, unknown>);
     }
 
@@ -243,10 +224,6 @@ async function parseIntent(
   }
 }
 
-/**
- * Build a demo intent for when OpenAI is not configured or quota exhausted.
- * Handles the main demo queries as well as arbitrary product queries deterministically.
- */
 function buildDemoIntent(query: string): ParsedIntent {
   const q = query.toLowerCase().trim();
 
@@ -264,7 +241,6 @@ function buildDemoIntent(query: string): ParsedIntent {
     };
   }
 
-  // Detect category from broad keyword matches
   let category: string | null = null;
   if (/\b(backpack|backpacks|daypack|rucksack|pack)\b/.test(q)) {
     category = 'backpacks';
@@ -284,7 +260,6 @@ function buildDemoIntent(query: string): ParsedIntent {
     category = 'accessories';
   }
 
-  // Extract budget
   let maxBudget: number | null = null;
   const budgetMatch =
     q.match(/(?:under|below|less\s*than|within|<=?|₹|\binr)\s*([0-9,]+)/i) ||
@@ -294,14 +269,12 @@ function buildDemoIntent(query: string): ParsedIntent {
     maxBudget = parseInt(budgetMatch[1].replace(/,/g, ''), 10);
   }
 
-  // High-value laptop demo override
   const isSpendingDemo = q.includes('75,000') || q.includes('75000') || (q.includes('laptop') && !maxBudget);
   if (isSpendingDemo) {
     category = 'electronics';
     maxBudget = 150000;
   }
 
-  // Extract destination
   let destination: string | null = null;
   if (q.includes('bangalore') || q.includes('bengaluru')) destination = 'bangalore';
   else if (q.includes('mumbai') || q.includes('bombay')) destination = 'mumbai';
@@ -310,7 +283,6 @@ function buildDemoIntent(query: string): ParsedIntent {
   else if (q.includes('chennai') || q.includes('madras')) destination = 'chennai';
   else if (q.includes('kolkata') || q.includes('calcutta')) destination = 'kolkata';
 
-  // Extract deadline
   let deadline: string | null = null;
   const today = new Date();
   if (q.includes('friday')) {
@@ -321,7 +293,6 @@ function buildDemoIntent(query: string): ParsedIntent {
     deadline = formatDate(tomorrow);
   }
 
-  // Extract hard requirements
   const hardRequirements: ParsedIntent['hardRequirements'] = [];
   if (q.includes('waterproof') || q.includes('water-proof') || q.includes('rainproof')) {
     hardRequirements.push({ attribute: 'waterproof', value: true, operator: 'eq' });
@@ -330,7 +301,6 @@ function buildDemoIntent(query: string): ParsedIntent {
     hardRequirements.push({ attribute: 'wireless', value: true, operator: 'eq' });
   }
 
-  // Soft preferences
   const softPreferences: ParsedIntent['softPreferences'] = [];
   if (category === 'backpacks' && (q.includes('laptop') || q.includes('15.6') || q.includes('15 inch'))) {
     softPreferences.push({ attribute: 'laptop_size_inches', value: 15.6, weight: 0.5 });
@@ -351,9 +321,6 @@ function buildDemoIntent(query: string): ParsedIntent {
   };
 }
 
-/**
- * Build fallback intent from partial AI output.
- */
 function buildFallbackIntent(
   rawQuery: string,
   partial: Record<string, unknown>
@@ -378,9 +345,6 @@ function buildFallbackIntent(
   };
 }
 
-/**
- * Build user-friendly "no match" message.
- */
 function buildNoMatchMessage(
   intent: ParsedIntent,
   reason: 'no_products' | 'constraint_failure',
@@ -394,7 +358,6 @@ function buildNoMatchMessage(
     );
   }
 
-  // Constraint failure — explain what failed
   const failures = constraintResults?.flatMap((r) =>
     r.eligible ? [] : r.failures.map((f) => `• ${f}`)
   ) || [];
@@ -410,9 +373,6 @@ function buildNoMatchMessage(
   );
 }
 
-/**
- * Build recommendation message for the user.
- */
 function buildRecommendationMessage(
   product: ProductWithDetails,
   ranking: RankingOutput,

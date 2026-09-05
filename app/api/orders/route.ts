@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
 
     const { sessionId, productId, variantId } = parsed.data;
 
-    // ─── 1. LOAD AND VALIDATE SESSION ────────────────────────────────────────
     const session = await prisma.buyerSession.findUnique({
       where: { id: sessionId },
     });
@@ -44,7 +43,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'SESSION_NOT_FOUND' }, { status: 404 });
     }
 
-    // Verify explicit approval was given
     const context = session.context as any;
     if (!context?.approvalGiven) {
       await logEvent({
@@ -63,7 +61,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check session state
     if (session.state !== AgentState.AWAIT_APPROVAL && session.state !== AgentState.VALIDATE_PURCHASE) {
       return NextResponse.json(
         {
@@ -75,7 +72,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Prevent duplicate orders
     const existingOrder = await prisma.order.findUnique({
       where: { sessionId },
     });
@@ -86,7 +82,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ─── 2. LOAD AND RE-VERIFY PRODUCT ────────────────────────────────────────
     const dbProduct = await prisma.product.findUnique({
       where: { id: productId },
       include: { merchant: true, variants: { where: { active: true } } },
@@ -98,7 +93,6 @@ export async function POST(req: NextRequest) {
 
     const product = mapProductToDetails(dbProduct);
 
-    // Re-check current inventory (not cached — fresh DB read)
     if (dbProduct.inventory <= 0) {
       return NextResponse.json(
         { error: 'PRODUCT_UNAVAILABLE', message: 'Product is now out of stock.' },
@@ -106,10 +100,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Re-check current price (fresh from DB, not from session)
     const currentPriceInr = dbProduct.priceInr;
 
-    // Re-check delivery if intent had a deadline
     if (context?.intent?.destination && context?.intent?.deliveryDeadline) {
       const deliveryCheck = await checkDelivery(
         product,
@@ -127,7 +119,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ─── 3. RUN PURCHASE POLICY ───────────────────────────────────────────────
     await prisma.buyerSession.update({
       where: { id: sessionId },
       data: { state: AgentState.VALIDATE_PURCHASE },
@@ -165,7 +156,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ─── 4. CREATE LOCAL ORDER ────────────────────────────────────────────────
     const receipt = `order_${nanoid(12)}`;
     const amountPaise = inrToPaise(currentPriceInr);
 
@@ -185,7 +175,6 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ─── 5. CREATE RAZORPAY ORDER ──────────────────────────────────────────────
     await prisma.buyerSession.update({
       where: { id: sessionId },
       data: { state: AgentState.CREATE_ORDER },
@@ -208,7 +197,6 @@ export async function POST(req: NextRequest) {
 
         razorpayOrderId = razorpayOrder.id;
 
-        // Update local order with Razorpay order ID
         await prisma.order.update({
           where: { id: order.id },
           data: {
@@ -217,7 +205,6 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Create payment record
         await prisma.payment.create({
           data: {
             orderId: order.id,
@@ -272,7 +259,6 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      // Demo mode: Razorpay not configured
       razorpayOrderId = `demo_order_${nanoid(8)}`;
 
       await prisma.order.update({
@@ -298,7 +284,6 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    // Update session state to CHECKOUT
     await prisma.buyerSession.update({
       where: { id: sessionId },
       data: {

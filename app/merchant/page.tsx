@@ -9,7 +9,6 @@ export default async function MerchantListPage() {
 
   return (
     <div className="min-h-screen bg-[#050a14] relative overflow-hidden text-slate-100 flex flex-col">
-      {/* Dynamic ambient background glow */}
       <div className="absolute top-[-100px] left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-gradient-to-br from-[#0c83ff]/15 via-[#00d2ff]/10 to-transparent blur-[120px] pointer-events-none -z-0" />
       <div className="absolute top-[400px] left-[-100px] w-[400px] h-[400px] bg-[#0c83ff]/10 blur-[130px] pointer-events-none -z-0" />
 

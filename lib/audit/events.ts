@@ -15,10 +15,6 @@ interface AuditEventInput {
   durationMs?: number;
 }
 
-/**
- * Log a structured audit event to the database.
- * Every consequential action in the system should call this.
- */
 export async function logEvent(event: AuditEventInput): Promise<void> {
   try {
     await prisma.agentEvent.create({
@@ -37,14 +33,10 @@ export async function logEvent(event: AuditEventInput): Promise<void> {
       },
     });
   } catch (error) {
-    // Never let audit logging failures break the main flow
     console.error('[audit] Failed to log event:', event.eventType, error);
   }
 }
 
-/**
- * Get the audit trail for a session, ordered by time.
- */
 export async function getSessionAuditTrail(sessionId: string) {
   return prisma.agentEvent.findMany({
     where: { sessionId },
@@ -52,9 +44,6 @@ export async function getSessionAuditTrail(sessionId: string) {
   });
 }
 
-/**
- * Get merchant audit events.
- */
 export async function getMerchantAuditEvents(merchantId: string, limit = 50) {
   return prisma.agentEvent.findMany({
     where: { merchantId },

@@ -1,8 +1,3 @@
-/**
- * Tests for the purchase policy engine.
- * Tests spending limits, category restrictions, approval requirements.
- */
-
 import { evaluatePurchasePolicy } from '../lib/policy/purchase-policy';
 import type { ProductWithDetails } from '../types/commerce';
 

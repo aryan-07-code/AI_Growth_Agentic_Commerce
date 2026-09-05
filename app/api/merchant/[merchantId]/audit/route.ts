@@ -44,7 +44,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'MERCHANT_NOT_FOUND' }, { status: 404 });
   }
 
-  // Run AI catalog audit (may create new CatalogIssue records)
   await auditCatalog(merchantId);
 
   const issues = await prisma.catalogIssue.findMany({

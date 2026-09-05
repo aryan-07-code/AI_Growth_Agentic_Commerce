@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-// ─── INTENT SCHEMA ────────────────────────────────────────────────────────────
-
 export const HardRequirementSchema = z.object({
   attribute: z.string(),
   value: z.union([z.string(), z.number(), z.boolean()]),
@@ -25,7 +23,7 @@ export const ParsedIntentSchema = z.object({
   category: z.string().nullable(),
   budget: BudgetSchema,
   destination: z.string().nullable(),
-  deliveryDeadline: z.string().nullable(), // ISO date string
+  deliveryDeadline: z.string().nullable(),
   hardRequirements: z.array(HardRequirementSchema),
   softPreferences: z.array(SoftPreferenceSchema),
   clarificationNeeded: z.boolean(),
@@ -33,8 +31,6 @@ export const ParsedIntentSchema = z.object({
 });
 
 export type ParsedIntent = z.infer<typeof ParsedIntentSchema>;
-
-// ─── RANKING SCHEMA ────────────────────────────────────────────────────────────
 
 export const RankingOutputSchema = z.object({
   selectedProductId: z.string(),
@@ -45,8 +41,6 @@ export const RankingOutputSchema = z.object({
 });
 
 export type RankingOutput = z.infer<typeof RankingOutputSchema>;
-
-// ─── MERCHANT AUDIT SCHEMA ────────────────────────────────────────────────────
 
 export const CatalogIssueProposalSchema = z.object({
   type: z.string(),
@@ -66,8 +60,6 @@ export const MerchantAuditOutputSchema = z.object({
 });
 
 export type MerchantAuditOutput = z.infer<typeof MerchantAuditOutputSchema>;
-
-// ─── REQUEST VALIDATION SCHEMAS ───────────────────────────────────────────────
 
 export const CreateSessionRequestSchema = z.object({
   merchantId: z.string().optional(),
@@ -91,8 +83,6 @@ export const VerifyPaymentRequestSchema = z.object({
   razorpay_signature: z.string().min(1),
   sessionId: z.string().min(1),
 });
-
-// ─── POLICY SCHEMA ────────────────────────────────────────────────────────────
 
 export const PolicyResultSchema = z.object({
   allowed: z.boolean(),

@@ -1,6 +1,5 @@
 import Razorpay from 'razorpay';
 
-// Razorpay client singleton
 const globalForRazorpay = global as unknown as { razorpay: Razorpay };
 
 function createRazorpayClient(): Razorpay {

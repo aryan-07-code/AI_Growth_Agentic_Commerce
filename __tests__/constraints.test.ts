@@ -1,15 +1,3 @@
-/**
- * Tests for the deterministic constraint engine.
- *
- * These tests verify that:
- * - Price constraints reject products over budget
- * - Waterproof constraints reject non-waterproof products
- * - Delivery constraints reject products that cannot arrive in time
- * - Inventory constraints reject out-of-stock products
- * - The three demo products behave exactly as specified
- */
-
-// Mock Prisma so tests run without a real DB
 jest.mock('../lib/db', () => {
   const mockPrisma = {
     merchantPolicy: { findMany: jest.fn().mockResolvedValue([]) },
@@ -18,7 +6,6 @@ jest.mock('../lib/db', () => {
   return { default: mockPrisma, __esModule: true };
 });
 
-// Also mock the search module's prisma usage
 jest.mock('../lib/commerce/search', () => {
   const original = jest.requireActual('../lib/commerce/search');
   return {
@@ -30,8 +17,6 @@ jest.mock('../lib/commerce/search', () => {
 import { applyConstraints, filterEligible } from '../lib/commerce/constraints';
 import type { ProductWithDetails } from '../types/commerce';
 import type { ParsedIntent } from '../lib/ai/schemas';
-
-// ─── TEST PRODUCTS ─────────────────────────────────────────────────────────────
 
 function makeProduct(overrides: Partial<ProductWithDetails>): ProductWithDetails {
   return {
@@ -74,8 +59,6 @@ function makeIntent(overrides: Partial<ParsedIntent>): ParsedIntent {
   };
 }
 
-// ─── PRICE CONSTRAINT TESTS ──────────────────────────────────────────────────
-
 describe('Price Constraint', () => {
   test('passes product under budget', async () => {
     const product = makeProduct({ priceInr: 3499 });
@@ -100,8 +83,6 @@ describe('Price Constraint', () => {
     expect(results[0].failures.some((f) => f.includes('exceeds budget'))).toBe(true);
   });
 });
-
-// ─── WATERPROOF CONSTRAINT TESTS ─────────────────────────────────────────────
 
 describe('Waterproof Constraint', () => {
   test('passes waterproof product when waterproof required', async () => {
@@ -133,8 +114,6 @@ describe('Waterproof Constraint', () => {
   });
 });
 
-// ─── INVENTORY CONSTRAINT TESTS ───────────────────────────────────────────────
-
 describe('Inventory Constraint', () => {
   test('passes product with stock', async () => {
     const product = makeProduct({ inventory: 5 });
@@ -153,11 +132,8 @@ describe('Inventory Constraint', () => {
   });
 });
 
-// ─── DELIVERY CONSTRAINT TESTS ────────────────────────────────────────────────
-
 describe('Delivery Constraint', () => {
   test('passes product with fast delivery override when delivery is within deadline', async () => {
-    // 10 days from now - plenty of time for 1-2 day delivery
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 10);
     const deadlineIso = futureDate.toISOString().split('T')[0];
@@ -165,7 +141,6 @@ describe('Delivery Constraint', () => {
     const product = makeProduct({
       attributes: {
         waterproof: true,
-        // Product-level delivery override — what the code reads
         delivery_override: {
           bangalore: { minDays: 1, maxDays: 2, fee: 0, available: true },
         },
@@ -183,15 +158,11 @@ describe('Delivery Constraint', () => {
   });
 
   test('TravelPro (5-7 day delivery) fails tight Friday deadline', async () => {
-    // Get next Friday
     const friday = new Date();
     const daysUntilFriday = (5 - friday.getDay() + 7) % 7 || 7;
     friday.setDate(friday.getDate() + daysUntilFriday);
     const fridayIso = friday.toISOString().split('T')[0];
 
-    // TravelPro with slow delivery (5-7 days to Bangalore)
-    // Today is Sunday (day 0) — Friday is 5 days away
-    // 7 business days from now goes past Friday
     const travelPro = makeProduct({
       id: 'product-travelpro-rainshield-30l',
       title: 'TravelPro RainShield 30L',
@@ -211,14 +182,10 @@ describe('Delivery Constraint', () => {
     });
 
     const results = await applyConstraints([travelPro], intent);
-    // 7 business days from today very likely exceeds this Friday
-    // The test just verifies the check runs and returns a delivery result
     expect(results[0].checks.delivery).toBeDefined();
     expect(results[0].deliveryEstimate).toBeDefined();
   });
 });
-
-// ─── FILTER ELIGIBLE TESTS ────────────────────────────────────────────────────
 
 describe('filterEligible', () => {
   test('filters out ineligible products', () => {
@@ -235,8 +202,6 @@ describe('filterEligible', () => {
     expect(eligible[0].id).toBe('p1');
   });
 });
-
-// ─── DEMO SCENARIO TESTS ──────────────────────────────────────────────────────
 
 describe('Demo Scenarios', () => {
   test('under ₹2,000 query fails all backpacks', async () => {

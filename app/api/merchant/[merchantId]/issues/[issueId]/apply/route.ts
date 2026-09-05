@@ -40,7 +40,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'ISSUE_ALREADY_RESOLVED', status: issue.status }, { status: 409 });
   }
 
-  // Mark issue as applied
   await prisma.catalogIssue.update({
     where: { id: issueId },
     data: { status: 'APPLIED', appliedAt: new Date() },

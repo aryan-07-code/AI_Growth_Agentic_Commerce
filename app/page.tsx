@@ -3,12 +3,10 @@ import Link from 'next/link';
 export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col bg-[#050a14] relative overflow-hidden text-slate-100">
-      {/* Dynamic ambient background glow */}
       <div className="absolute top-[-140px] left-1/2 -translate-x-1/2 w-[800px] h-[450px] bg-gradient-to-b from-[#0c83ff]/20 via-[#00d2ff]/10 to-transparent blur-[140px] pointer-events-none -z-0" />
       <div className="absolute top-[35%] right-[-120px] w-[500px] h-[500px] bg-[#0c83ff]/10 blur-[150px] pointer-events-none -z-0" />
       <div className="absolute bottom-[-100px] left-[-100px] w-[600px] h-[450px] bg-[#0284c7]/15 blur-[160px] pointer-events-none -z-0" />
 
-      {/* Header */}
       <header className="border-b border-[rgba(12,131,255,0.18)] px-6 py-4 flex items-center justify-between sticky top-0 bg-[#050a14]/85 backdrop-blur-xl z-20 shadow-[0_4px_25px_rgba(0,0,0,0.6)]">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2.5 group">
@@ -44,28 +42,23 @@ export default function HomePage() {
         </nav>
       </header>
 
-      {/* Hero Section */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-20 sm:py-28 text-center relative z-10 max-w-5xl mx-auto w-full">
-        {/* Top Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#0b1b36] border border-[#0c83ff]/35 text-[#38bdf8] text-xs sm:text-sm font-medium mb-8 shadow-[0_0_20px_rgba(12,131,255,0.25)] animate-fade-in">
           <span className="w-2 h-2 rounded-full bg-[#00d2ff] animate-ping" />
           <span>Razorpay AI Growth &amp; Agentic Commerce Track</span>
         </div>
 
-        {/* Big Headline */}
         <h1 className="font-heading text-5xl sm:text-6xl md:text-7xl font-black tracking-tight text-white mb-6 max-w-4xl leading-[1.1]">
           Autonomous Commerce
           <br />
           <span className="gradient-text">Infrastructure Layer</span>
         </h1>
 
-        {/* Subtitle */}
         <p className="text-slate-400 text-base sm:text-xl max-w-2xl mb-10 leading-relaxed font-body">
           Natural language discovery powered by deep intent reasoning and deterministic constraint enforcement.
           <span className="text-white font-medium block mt-1">AI reasons. Code constrains. Razorpay controls money.</span>
         </p>
 
-        {/* CTAs */}
         <div className="flex flex-col sm:flex-row gap-4 mb-14 w-full sm:w-auto">
           <Link
             href="/buyer"
@@ -82,7 +75,6 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* Live Query Demo Card */}
         <div className="card-interactive max-w-xl w-full text-left p-5 sm:p-6 rounded-2xl border border-[#0c83ff]/25 bg-[#0b1528]/85 backdrop-blur-2xl shadow-[0_0_35px_rgba(12,131,255,0.18)] mb-16">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase tracking-wider font-bold text-[#38bdf8] flex items-center gap-2">
@@ -102,7 +94,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 3 Architecture Pillars */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl w-full text-left">
           {[
             {
@@ -146,7 +137,6 @@ export default function HomePage() {
           ))}
         </div>
 
-        {/* Live Telemetry / Catalog Strip */}
         <div className="mt-14 pt-8 border-t border-white/5 max-w-3xl w-full grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
           <div>
             <p className="font-heading text-2xl font-extrabold text-white">51+</p>
@@ -167,7 +157,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Footer */}
       <footer className="border-t border-[rgba(12,131,255,0.18)] px-6 py-6 text-center bg-[#050a14]/90 backdrop-blur-md relative z-10">
         <p className="text-slate-500 text-xs">
           AgentReady · Razorpay AI Commerce Infrastructure · Autonomous Agentic Engine

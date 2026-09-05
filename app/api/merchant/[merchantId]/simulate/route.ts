@@ -24,11 +24,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'MERCHANT_NOT_FOUND' }, { status: 404 });
   }
 
-  // Run simulation on current catalog
   const currentResult = await runBuyerSimulation(merchantId, 'current');
 
-  // Simulate "optimized" by bumping rates by the expected improvement
-  // NOTE: This is a SIMULATION — clearly labeled as such in the response
   const optimizedResult: typeof currentResult = {
     ...currentResult,
     catalogVersion: 'optimized',
@@ -40,7 +37,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   };
 
   return NextResponse.json({
-    // Clearly distinguish real simulation from projected improvement
     isSimulated: true,
     simulationNote:
       'Simulation runs actual buyer agent against current catalog. ' +
