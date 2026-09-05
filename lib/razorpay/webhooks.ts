@@ -1,14 +1,6 @@
 import crypto from 'crypto';
 import type { RazorpayWebhookEvent } from '@/types/razorpay';
 
-/**
- * Verify Razorpay webhook signature.
- *
- * SECURITY: Uses the raw request body (before any JSON parsing) for signature verification.
- * Parsing the body first can cause subtle encoding differences that break verification.
- *
- * Formula: HMAC-SHA256(raw_body, webhook_secret)
- */
 export function verifyWebhookSignature(
   rawBody: string | Buffer,
   signature: string
@@ -39,9 +31,6 @@ export function verifyWebhookSignature(
   }
 }
 
-/**
- * Parse a Razorpay webhook payload.
- */
 export function parseWebhookEvent(body: string): RazorpayWebhookEvent {
   try {
     return JSON.parse(body) as RazorpayWebhookEvent;
@@ -50,9 +39,6 @@ export function parseWebhookEvent(body: string): RazorpayWebhookEvent {
   }
 }
 
-/**
- * Extract the event type from a webhook event.
- */
 export function getWebhookEventType(event: RazorpayWebhookEvent): string {
   return event.event;
 }

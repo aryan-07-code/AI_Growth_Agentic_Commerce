@@ -3,8 +3,18 @@ import prisma from '@/lib/db';
 import { CreateSessionRequestSchema } from '@/lib/ai/schemas';
 import { AgentState, EventType } from '@/types/agent';
 import { logEvent } from '@/lib/audit/events';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 export async function POST(request: NextRequest) {
+  try {
+    requirePermission(request, 'product:read');
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
+
   try {
     const body = await request.json();
     const parsed = CreateSessionRequestSchema.safeParse(body);
@@ -18,7 +28,6 @@ export async function POST(request: NextRequest) {
 
     const { merchantId, userAgent } = parsed.data;
 
-    // Validate merchantId if provided
     if (merchantId) {
       const merchant = await prisma.merchant.findUnique({ where: { id: merchantId } });
       if (!merchant || !merchant.active) {
@@ -26,7 +35,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create session
     const session = await prisma.buyerSession.create({
       data: {
         merchantId: merchantId || null,

@@ -2,34 +2,24 @@ import prisma from '@/lib/db';
 import type { ParsedIntent } from '@/lib/ai/schemas';
 import type { ProductWithDetails } from '@/types/commerce';
 
-/**
- * Search the product catalog based on parsed intent.
- * Uses PostgreSQL keyword matching + category filtering.
- * Does NOT use vector search — pure deterministic SQL.
- */
 export async function searchProducts(intent: ParsedIntent): Promise<ProductWithDetails[]> {
   const { category, budget, hardRequirements } = intent;
 
-  // Build where clause
   const where: Record<string, unknown> = {
     active: true,
     inventory: { gt: 0 },
   };
 
-  // Category filter
   if (category) {
-    // Normalize category to handle plurals and synonyms
     const normalizedCategory = normalizeCategory(category);
     where.category = normalizedCategory;
   }
 
-  // Budget filter — only apply if budget.max is set (hard constraint)
   if (budget?.max !== null && budget?.max !== undefined) {
     where.priceInr = { lte: budget.max };
   }
 
-  // Fetch products from DB
-  const products = await prisma.product.findMany({
+  let products = await prisma.product.findMany({
     where: where as any,
     include: {
       merchant: true,
@@ -38,23 +28,19 @@ export async function searchProducts(intent: ParsedIntent): Promise<ProductWithD
     orderBy: [
       { priceInr: 'asc' },
     ],
-    take: 50, // Reasonable limit
+    take: 50,
   });
 
-  // If category filter returned nothing, try keyword search fallback
-  let finalProducts = products;
-  if (products.length === 0 && category) {
-    finalProducts = await keywordFallbackSearch(intent, budget?.max ?? undefined);
+  if (products.length === 0 || !category) {
+    const keywordMatches = await keywordFallbackSearch(intent, budget?.max ?? undefined);
+    if (keywordMatches.length > 0) {
+      products = keywordMatches;
+    }
   }
 
-  // Map to ProductWithDetails
-  return finalProducts.map(mapProductToDetails);
+  return products.map(mapProductToDetails);
 }
 
-/**
- * Fallback keyword search when category filter returns nothing.
- * Searches title, description, and AI metadata for keywords.
- */
 async function keywordFallbackSearch(
   intent: ParsedIntent,
   maxPrice?: number
@@ -65,7 +51,6 @@ async function keywordFallbackSearch(
     return [];
   }
 
-  // Build OR conditions for keyword matching
   const orConditions = searchTerms.flatMap((term) => [
     { title: { contains: term, mode: 'insensitive' as const } },
     { description: { contains: term, mode: 'insensitive' as const } },
@@ -88,41 +73,53 @@ async function keywordFallbackSearch(
   });
 }
 
-/**
- * Build search keywords from intent for fallback search.
- */
 function buildSearchTerms(intent: ParsedIntent): string[] {
   const terms: string[] = [];
 
   if (intent.category) {
     terms.push(intent.category);
-    // Category synonyms
     const synonyms: Record<string, string[]> = {
-      backpack: ['backpacks', 'bag', 'pack'],
-      backpacks: ['backpack', 'bag'],
-      bags: ['bag', 'backpack', 'tote', 'duffel'],
-      shoe: ['shoes', 'footwear', 'sneaker', 'running'],
-      shoes: ['shoe', 'footwear', 'sneaker'],
+      backpack: ['backpacks', 'bag', 'pack', 'daypack'],
+      backpacks: ['backpack', 'bag', 'pack', 'daypack'],
+      bags: ['bag', 'backpack', 'tote', 'duffel', 'sling'],
+      bag: ['bags', 'backpack', 'duffel', 'sling'],
+      shoe: ['shoes', 'footwear', 'sneaker', 'running', 'runner'],
+      shoes: ['shoe', 'footwear', 'sneaker', 'running', 'runner'],
+      footwear: ['shoe', 'shoes', 'sneaker', 'running', 'runner'],
+      apparel: ['tee', 'shirt', 'tshirt', 'shorts', 'jacket', 'running'],
+      clothing: ['tee', 'shirt', 'shorts', 'jacket', 'apparel'],
+      electronics: ['phone', 'charger', 'cable', 'powerbank', 'headphones', 'earbuds', 'watch', 'laptop'],
+      accessories: ['pillow', 'sleeve', 'cubes', 'accessories'],
+      fitness: ['bands', 'roller', 'vest', 'fitness'],
       laptop: ['laptop', 'computer', 'notebook'],
-      phone: ['phone', 'smartphone', 'mobile'],
+      phone: ['phone', 'smartphone', 'mobile', 'charger'],
     };
     const extra = synonyms[intent.category.toLowerCase()] || [];
     terms.push(...extra);
   }
 
-  // Add hard requirement attributes as keywords
+  if (intent.rawQuery) {
+    const stopWords = new Set([
+      'find', 'me', 'a', 'an', 'the', 'under', 'below', 'above', 'in', 'at', 'by', 'on', 'for', 'with', 'to', 'from',
+      'that', 'reaches', 'delivery', 'deliver', 'buy', 'want', 'need', 'please', 'is', 'it', 'and', 'or', 'of', 'show'
+    ]);
+    const words = intent.rawQuery
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w) && !/^\d+$/.test(w));
+    terms.push(...words);
+  }
+
   for (const req of intent.hardRequirements) {
     if (req.attribute === 'waterproof' && req.value === true) {
       terms.push('waterproof', 'rainproof');
     }
   }
 
-  return [...new Set(terms)]; // deduplicate
+  return [...new Set(terms)];
 }
 
-/**
- * Normalize category input to match DB category values.
- */
 function normalizeCategory(input: string): string {
   const map: Record<string, string> = {
     backpack: 'backpacks',
@@ -151,9 +148,6 @@ function normalizeCategory(input: string): string {
   return map[normalized] || normalized;
 }
 
-/**
- * Map a Prisma product record to ProductWithDetails.
- */
 export function mapProductToDetails(product: any): ProductWithDetails {
   const deliveryRules = extractDeliveryRulesFromProduct(product);
 
@@ -178,10 +172,6 @@ export function mapProductToDetails(product: any): ProductWithDetails {
   };
 }
 
-/**
- * Extract delivery rules from product attributes (for products with embedded delivery overrides).
- * Standard delivery rules should be fetched from MerchantPolicy.
- */
 function extractDeliveryRulesFromProduct(product: any): any[] {
   const rules: any[] = [];
   const attrs = product.attributes as any;
@@ -201,9 +191,6 @@ function extractDeliveryRulesFromProduct(product: any): any[] {
   return rules;
 }
 
-/**
- * Get merchant delivery rules from MerchantPolicy table.
- */
 export async function getMerchantDeliveryRules(merchantId: string): Promise<any[]> {
   const policies = await prisma.merchantPolicy.findMany({
     where: { merchantId, type: 'DELIVERY' },

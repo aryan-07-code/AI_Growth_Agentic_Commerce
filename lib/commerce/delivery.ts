@@ -3,21 +3,13 @@ import type { ProductWithDetails } from '@/types/commerce';
 
 export interface DeliveryCheckResult {
   eligible: boolean;
-  estimatedDelivery: string; // ISO date YYYY-MM-DD
+  estimatedDelivery: string;
   shippingFee: number;
   minDays: number;
   maxDays: number;
   ruleSource: 'merchant_policy' | 'product_override' | 'not_found';
 }
 
-/**
- * Check whether a product can reach a destination before a deadline.
- *
- * Delivery times are fetched from MerchantPolicy records (deterministic DB data).
- * The LLM never calls this function.
- *
- * Business days: Monday-Friday only. Saturday/Sunday do not count.
- */
 export async function checkDelivery(
   product: ProductWithDetails,
   destination: string,
@@ -25,13 +17,11 @@ export async function checkDelivery(
 ): Promise<DeliveryCheckResult> {
   const normalizedDest = normalizeDestination(destination);
 
-  // 1. Check product-level delivery override (for special SKUs like TravelPro)
   const productOverride = getProductDeliveryOverride(product, normalizedDest);
   if (productOverride) {
     return computeDeliveryResult(productOverride, deadlineIso, 'product_override');
   }
 
-  // 2. Check merchant-level delivery policy
   const merchantRules = await getMerchantDeliveryRules(product.merchantId);
   const matchingRule = merchantRules.find((r) => {
     const ruleDest = normalizeDestination(r.destination);
@@ -42,7 +32,6 @@ export async function checkDelivery(
     return computeDeliveryResult(matchingRule, deadlineIso, 'merchant_policy');
   }
 
-  // 3. No rule found — fail closed
   return {
     eligible: false,
     estimatedDelivery: 'unknown',
@@ -53,9 +42,6 @@ export async function checkDelivery(
   };
 }
 
-/**
- * Compute delivery result from a rule, checking against deadline.
- */
 function computeDeliveryResult(
   rule: { minDays: number; maxDays: number; shippingFee: number; available: boolean },
   deadlineIso: string,
@@ -72,13 +58,11 @@ function computeDeliveryResult(
     };
   }
 
-  // Use maxDays as the worst case (most conservative for eligibility)
   const estimatedDate = addBusinessDays(new Date(), rule.maxDays);
   const estimatedIso = formatDate(estimatedDate);
   const deadline = new Date(deadlineIso);
 
-  // Normalize both to midnight UTC for comparison
-  deadline.setHours(23, 59, 59, 999); // Deadline is end of that day
+  deadline.setHours(23, 59, 59, 999);
 
   const eligible = estimatedDate <= deadline;
 
@@ -92,10 +76,6 @@ function computeDeliveryResult(
   };
 }
 
-/**
- * Get delivery override from product attributes.
- * Used for products with non-standard delivery (e.g., TravelPro with economy shipping).
- */
 function getProductDeliveryOverride(
   product: ProductWithDetails,
   destination: string
@@ -119,9 +99,6 @@ function getProductDeliveryOverride(
   return null;
 }
 
-/**
- * Add business days (Mon-Fri) to a date.
- */
 export function addBusinessDays(startDate: Date, days: number): Date {
   const result = new Date(startDate);
   let daysAdded = 0;
@@ -129,7 +106,6 @@ export function addBusinessDays(startDate: Date, days: number): Date {
   while (daysAdded < days) {
     result.setDate(result.getDate() + 1);
     const dayOfWeek = result.getDay();
-    // 0 = Sunday, 6 = Saturday
     if (dayOfWeek !== 0 && dayOfWeek !== 6) {
       daysAdded++;
     }
@@ -138,16 +114,10 @@ export function addBusinessDays(startDate: Date, days: number): Date {
   return result;
 }
 
-/**
- * Format a Date to YYYY-MM-DD string.
- */
 export function formatDate(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
-/**
- * Get the next occurrence of a day name (e.g., "Friday") as an ISO date.
- */
 export function getNextDayOfWeek(dayName: string): string {
   const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const targetDay = days.indexOf(dayName.toLowerCase());
@@ -164,9 +134,6 @@ export function getNextDayOfWeek(dayName: string): string {
   return formatDate(target);
 }
 
-/**
- * Normalize destination name for comparison.
- */
 function normalizeDestination(dest: string): string {
   return dest.toLowerCase().trim()
     .replace(/\s+/g, '')

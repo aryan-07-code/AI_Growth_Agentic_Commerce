@@ -4,7 +4,6 @@ import { verifyWebhookSignature, parseWebhookEvent } from '@/lib/razorpay/webhoo
 import { logEvent } from '@/lib/audit/events';
 import { OrderState, PaymentState, AgentState, EventType } from '@/types/agent';
 
-// IMPORTANT: Disable Next.js body parsing to get raw body for signature verification
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -16,7 +15,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'INVALID_BODY' }, { status: 400 });
   }
 
-  // ─── 1. VERIFY WEBHOOK SIGNATURE ─────────────────────────────────────────
   const signature = request.headers.get('x-razorpay-signature') || '';
 
   if (process.env.RAZORPAY_WEBHOOK_SECRET) {
@@ -41,11 +39,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'WEBHOOK_ERROR' }, { status: 500 });
     }
   } else {
-    // Demo mode: no webhook secret configured
     console.warn('[webhook] RAZORPAY_WEBHOOK_SECRET not set — skipping signature verification (demo mode)');
   }
 
-  // ─── 2. PARSE EVENT ───────────────────────────────────────────────────────
   let event: ReturnType<typeof parseWebhookEvent>;
   try {
     event = parseWebhookEvent(rawBody);
@@ -65,7 +61,6 @@ export async function POST(request: NextRequest) {
     input: { eventType, paymentId: paymentEntity?.id },
   });
 
-  // ─── 3. ROUTE BY EVENT TYPE ───────────────────────────────────────────────
   switch (eventType) {
     case 'payment.captured':
       await handlePaymentCaptured(paymentEntity);
@@ -79,14 +74,9 @@ export async function POST(request: NextRequest) {
       console.log(`[webhook] Unhandled event type: ${eventType}`);
   }
 
-  // Always return 200 quickly — webhook processing should not be slow
   return NextResponse.json({ received: true });
 }
 
-/**
- * Handle payment.captured event.
- * This is the authoritative confirmation that payment succeeded.
- */
 async function handlePaymentCaptured(paymentEntity: any) {
   if (!paymentEntity?.id || !paymentEntity?.order_id) {
     console.error('[webhook] payment.captured missing payment entity');
@@ -96,7 +86,6 @@ async function handlePaymentCaptured(paymentEntity: any) {
   const razorpayPaymentId = paymentEntity.id;
   const razorpayOrderId = paymentEntity.order_id;
 
-  // Find local order by Razorpay order ID
   const order = await prisma.order.findFirst({
     where: { razorpayOrderId },
     include: { payment: true, session: true },
@@ -107,8 +96,6 @@ async function handlePaymentCaptured(paymentEntity: any) {
     return;
   }
 
-  // ─── IDEMPOTENCY CHECK ────────────────────────────────────────────────────
-  // Check if we already processed this event
   const existingProcessed = order.payment?.webhookProcessedAt;
   if (existingProcessed && order.payment?.status === PaymentState.CAPTURED) {
     console.log(`[webhook] Already processed payment.captured for order: ${order.id}`);
@@ -117,7 +104,6 @@ async function handlePaymentCaptured(paymentEntity: any) {
 
   const now = new Date();
 
-  // Update payment record
   if (order.payment) {
     await prisma.payment.update({
       where: { orderId: order.id },
@@ -135,13 +121,11 @@ async function handlePaymentCaptured(paymentEntity: any) {
     });
   }
 
-  // Update order status
   await prisma.order.update({
     where: { id: order.id },
     data: { status: OrderState.PAID },
   });
 
-  // Update session state
   if (order.sessionId) {
     await prisma.buyerSession.update({
       where: { id: order.sessionId },
@@ -165,9 +149,6 @@ async function handlePaymentCaptured(paymentEntity: any) {
   console.log(`[webhook] Payment captured for order ${order.id}: ₹${order.amountInr}`);
 }
 
-/**
- * Handle payment.failed event.
- */
 async function handlePaymentFailed(paymentEntity: any) {
   if (!paymentEntity?.order_id) {
     console.error('[webhook] payment.failed missing order_id');
@@ -186,7 +167,6 @@ async function handlePaymentFailed(paymentEntity: any) {
     return;
   }
 
-  // Idempotency
   if (order.payment?.webhookProcessedAt && order.payment?.status === PaymentState.FAILED) {
     return;
   }

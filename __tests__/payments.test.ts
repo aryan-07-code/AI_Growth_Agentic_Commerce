@@ -1,15 +1,8 @@
-/**
- * Tests for Razorpay payment signature verification.
- * Tests timing-safe comparison, correct HMAC, and webhook signature.
- */
-
 import crypto from 'crypto';
 
-// Mock environment
 const TEST_KEY_SECRET = 'test_secret_key_for_hmac_verification';
 const TEST_WEBHOOK_SECRET = 'test_webhook_secret';
 
-// Set up env before importing modules that read it
 beforeAll(() => {
   process.env.RAZORPAY_KEY_SECRET = TEST_KEY_SECRET;
   process.env.RAZORPAY_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
@@ -20,11 +13,9 @@ afterAll(() => {
   delete process.env.RAZORPAY_WEBHOOK_SECRET;
 });
 
-// Import after env setup
 import { verifyPaymentSignature } from '../lib/razorpay/payments';
 import { verifyWebhookSignature } from '../lib/razorpay/webhooks';
 
-// Helper to generate valid payment signature
 function makePaymentSignature(orderId: string, paymentId: string, secret = TEST_KEY_SECRET): string {
   return crypto
     .createHmac('sha256', secret)
@@ -32,7 +23,6 @@ function makePaymentSignature(orderId: string, paymentId: string, secret = TEST_
     .digest('hex');
 }
 
-// Helper to generate valid webhook signature
 function makeWebhookSignature(body: string, secret = TEST_WEBHOOK_SECRET): string {
   return crypto
     .createHmac('sha256', secret)
@@ -104,7 +94,6 @@ describe('Webhook Signature Verification', () => {
 });
 
 describe('Duplicate Webhook Idempotency Logic', () => {
-  // This tests the logic pattern used in the webhook handler
   test('idempotency check prevents double processing', () => {
     const alreadyProcessed = true;
     const processingResult = alreadyProcessed ? 'skipped' : 'processed';

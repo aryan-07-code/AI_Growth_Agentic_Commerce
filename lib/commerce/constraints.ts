@@ -2,13 +2,6 @@ import type { ProductWithDetails, ConstraintCheck } from '@/types/commerce';
 import type { ParsedIntent } from '@/lib/ai/schemas';
 import { checkDelivery } from './delivery';
 
-/**
- * Apply deterministic hard constraints to a list of candidate products.
- * Returns per-product constraint results.
- *
- * CRITICAL: The LLM NEVER calls this function. Constraints are always
- * evaluated in code before AI ranking occurs.
- */
 export async function applyConstraints(
   products: ProductWithDetails[],
   intent: ParsedIntent
@@ -23,9 +16,6 @@ export async function applyConstraints(
   return results;
 }
 
-/**
- * Evaluate a single product against the parsed intent.
- */
 async function evaluateProduct(
   product: ProductWithDetails,
   intent: ParsedIntent
@@ -36,7 +26,6 @@ async function evaluateProduct(
   };
   const failures: string[] = [];
 
-  // ─── 1. PRICE CONSTRAINT ─────────────────────────────────────────────────
   if (intent.budget.max !== null && intent.budget.max !== undefined) {
     const pricePass = product.priceInr <= intent.budget.max;
     checks.price = pricePass;
@@ -47,14 +36,12 @@ async function evaluateProduct(
     }
   }
 
-  // ─── 2. AVAILABILITY CONSTRAINT ──────────────────────────────────────────
   const inStock = product.inventory > 0;
   checks.availability = inStock;
   if (!inStock) {
     failures.push('Product is out of stock');
   }
 
-  // ─── 3. HARD REQUIREMENT CONSTRAINTS ─────────────────────────────────────
   for (const req of intent.hardRequirements) {
     const { attribute, value, operator = 'eq' } = req;
     const attrValue = (product.attributes as Record<string, unknown>)[attribute];
@@ -62,7 +49,6 @@ async function evaluateProduct(
     let pass = false;
 
     if (attrValue === undefined || attrValue === null) {
-      // Attribute not present — fail closed
       pass = false;
       checks[attribute] = false;
       failures.push(
@@ -98,7 +84,6 @@ async function evaluateProduct(
     }
   }
 
-  // ─── 4. DELIVERY CONSTRAINT ───────────────────────────────────────────────
   let deliveryEstimate: ConstraintCheck['deliveryEstimate'];
 
   if (intent.destination && intent.deliveryDeadline) {
@@ -136,9 +121,6 @@ async function evaluateProduct(
   };
 }
 
-/**
- * Filter products to only eligible ones based on constraint results.
- */
 export function filterEligible(
   products: ProductWithDetails[],
   constraintResults: ConstraintCheck[]
@@ -149,9 +131,6 @@ export function filterEligible(
   return products.filter((p) => eligibleIds.has(p.id));
 }
 
-/**
- * Get the constraint result for a specific product.
- */
 export function getConstraintResult(
   productId: string,
   constraintResults: ConstraintCheck[]
