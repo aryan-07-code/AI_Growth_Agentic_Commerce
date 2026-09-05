@@ -3,13 +3,23 @@ import prisma from '@/lib/db';
 import { SendMessageRequestSchema } from '@/lib/ai/schemas';
 import { runBuyerAgent } from '@/lib/ai/buyer-agent';
 import { AgentState } from '@/types/agent';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 interface RouteParams {
   params: Promise<{ sessionId: string }>;
 }
 
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(req: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params;
+
+  try {
+    requirePermission(req, 'product:read');
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   try {
     // Load session
@@ -31,7 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate request body
-    const body = await request.json();
+    const body = await req.json();
     const parsed = SendMessageRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -42,18 +52,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { message, approvalGiven } = parsed.data;
 
-    // Update session state
-    await prisma.buyerSession.update({
-      where: { id: sessionId },
-      data: { state: AgentState.UNDERSTAND_INTENT },
-    });
-
-    // Run the buyer agent pipeline
-    const result = await runBuyerAgent(sessionId, message);
-
-    // Handle approval flow
-    if (approvalGiven && session.state === AgentState.AWAIT_APPROVAL) {
-      const context = session.context as any;
+    // Handle approval flow immediately before running pipeline
+    if (approvalGiven) {
+      const context = (session.context as any) || {};
       await prisma.buyerSession.update({
         where: { id: sessionId },
         data: {
@@ -72,6 +73,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         approvalGranted: true,
       });
     }
+
+    // Update session state
+    await prisma.buyerSession.update({
+      where: { id: sessionId },
+      data: { state: AgentState.UNDERSTAND_INTENT },
+    });
+
+    // Run the buyer agent pipeline
+    const result = await runBuyerAgent(sessionId, message);
 
     // Persist messages and context
     const messages = (session.messages as any[]) || [];
@@ -128,6 +138,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             title: result.selectedProduct.title,
             priceInr: result.selectedProduct.priceInr,
             merchantName: result.selectedProduct.merchantName,
+            category: result.selectedProduct.category,
             warrantyMonths: result.selectedProduct.warrantyMonths,
             returnDays: result.selectedProduct.returnDays,
             attributes: result.selectedProduct.attributes,
@@ -145,8 +156,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 }
 
 // GET session state + audit trail
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(req: NextRequest, { params }: RouteParams) {
   const { sessionId } = await params;
+
+  try {
+    requirePermission(req, 'product:read');
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   const session = await prisma.buyerSession.findUnique({
     where: { id: sessionId },

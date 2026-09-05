@@ -156,7 +156,10 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
   async function runSimulation() {
     setSimulating(true);
     try {
-      const res = await fetch(`/api/merchant/${merchantId}/simulate`, { method: 'POST' });
+      const res = await fetch(`/api/merchant/${merchantId}/simulate`, { 
+        method: 'POST',
+        headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
+      });
       const simData = await res.json();
       setSimulation(simData);
     } catch (err) {
@@ -170,10 +173,15 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
   async function runAudit() {
     setAuditing(true);
     try {
-      const res = await fetch(`/api/merchant/${merchantId}/audit`, { method: 'POST' });
+      const res = await fetch(`/api/merchant/${merchantId}/audit`, { 
+        method: 'POST',
+        headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
+      });
       const auditData = await res.json();
       // Refresh merchant data
-      const merchantRes = await fetch(`/api/merchant/${merchantId}`);
+      const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
+        headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
+      });
       const newData = await merchantRes.json();
       setData(newData);
     } catch (err) {
@@ -190,12 +198,14 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     try {
       const res = await fetch(`/api/merchant/${merchantId}/issues/${issueId}/apply`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId },
         body: JSON.stringify({ confirmed: true }),
       });
       if (res.ok) {
         // Refresh data
-        const merchantRes = await fetch(`/api/merchant/${merchantId}`);
+        const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
+          headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
+        });
         const newData = await merchantRes.json();
         setData(newData);
       }
@@ -260,7 +270,7 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
     try {
       const res = await fetch(`/api/merchant/${merchantId}/products`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId },
         body: JSON.stringify({
           title: form.title.trim(),
           sku: form.sku.trim(),
@@ -282,7 +292,9 @@ export default function MerchantDashboardClient({ initialData, merchantId }: Pro
       }
 
       // Success — refresh merchant data
-      const merchantRes = await fetch(`/api/merchant/${merchantId}`);
+      const merchantRes = await fetch(`/api/merchant/${merchantId}`, {
+        headers: { 'X-Agent-Role': 'MERCHANT_AGENT', 'X-Merchant-Id': merchantId }
+      });
       const newData = await merchantRes.json();
       setData(newData);
 

@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runBuyerSimulation } from '@/lib/ai/merchant-agent';
 import prisma from '@/lib/db';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 interface RouteParams {
   params: Promise<{ merchantId: string }>;
 }
 
-export async function POST(_req: NextRequest, { params }: RouteParams) {
+export async function POST(req: NextRequest, { params }: RouteParams) {
   const { merchantId } = await params;
+
+  try {
+    requirePermission(req, 'simulation:run', merchantId);
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   const merchant = await prisma.merchant.findUnique({ where: { id: merchantId } });
   if (!merchant) {

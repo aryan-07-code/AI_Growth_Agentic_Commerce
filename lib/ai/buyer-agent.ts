@@ -238,115 +238,116 @@ async function parseIntent(
 
     return validated.data;
   } catch (error: any) {
-    // If the API key has no credits or quota is exhausted, fall back to demo mode
-    const isQuotaError =
-      error?.status === 429 ||
-      error?.code === 'insufficient_quota' ||
-      error?.code === 'credit_balance_exhausted';
-
-    if (isQuotaError) {
-      console.warn('[buyer-agent] OpenAI quota exhausted — falling back to demo intent parser');
-      return buildDemoIntent(userMessage);
-    }
-
-    // Re-throw other errors (network issues, auth failures, etc.)
-    throw error;
+    console.warn('[buyer-agent] OpenAI unavailable, falling back to local intent parser:', error?.message);
+    return buildDemoIntent(userMessage);
   }
 }
 
 /**
- * Build a demo intent for when OpenAI is not configured.
- * Handles the main demo query deterministically.
+ * Build a demo intent for when OpenAI is not configured or quota exhausted.
+ * Handles the main demo queries as well as arbitrary product queries deterministically.
  */
 function buildDemoIntent(query: string): ParsedIntent {
-  const q = query.toLowerCase();
+  const q = query.toLowerCase().trim();
 
-  // Detect the main demo query pattern
-  const isMainDemo = q.includes('waterproof') && q.includes('backpack');
-  const isFailureDemo = isMainDemo && (q.includes('2,000') || q.includes('2000'));
-  const isSpendingDemo = q.includes('75,000') || q.includes('75000') || q.includes('laptop');
-
-  const today = new Date();
-  const friday = getNextFriday(today);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  if (isSpendingDemo) {
+  if (!q) {
     return {
       rawQuery: query,
-      category: 'electronics',
-      budget: { max: 150000, min: null, currency: 'INR' },
+      category: null,
+      budget: { max: null, min: null, currency: 'INR' },
       destination: null,
       deliveryDeadline: null,
       hardRequirements: [],
-      softPreferences: [{ attribute: 'type', value: 'laptop', weight: 1 }],
-      clarificationNeeded: false,
-    };
-  }
-
-  if (isFailureDemo) {
-    return {
-      rawQuery: query,
-      category: 'backpacks',
-      budget: { max: 2000, min: null, currency: 'INR' },
-      destination: 'bangalore',
-      deliveryDeadline: formatDate(tomorrow),
-      hardRequirements: [
-        { attribute: 'waterproof', value: true, operator: 'eq' },
-      ],
       softPreferences: [],
-      clarificationNeeded: false,
+      clarificationNeeded: true,
+      clarificationQuestion: 'What product are you looking to buy today?',
     };
   }
 
-  if (isMainDemo) {
-    // Extract budget
-    let maxBudget = 4000;
-    const budgetMatch = q.match(/₹?\s*([0-9,]+)/);
-    if (budgetMatch) {
-      maxBudget = parseInt(budgetMatch[1].replace(/,/g, ''));
-    }
-
-    // Extract destination
-    let destination = null;
-    if (q.includes('bangalore') || q.includes('bengaluru')) destination = 'bangalore';
-    else if (q.includes('mumbai') || q.includes('bombay')) destination = 'mumbai';
-    else if (q.includes('delhi')) destination = 'delhi';
-
-    // Extract deadline
-    let deadline = null;
-    if (q.includes('friday')) deadline = formatDate(friday);
-    else if (q.includes('tomorrow')) deadline = formatDate(tomorrow);
-
-    return {
-      rawQuery: query,
-      category: 'backpacks',
-      budget: { max: maxBudget, min: null, currency: 'INR' },
-      destination,
-      deliveryDeadline: deadline,
-      hardRequirements: [
-        { attribute: 'waterproof', value: true, operator: 'eq' },
-      ],
-      softPreferences: [
-        { attribute: 'laptop_size_inches', value: 15.6, weight: 0.5 },
-      ],
-      clarificationNeeded: false,
-    };
+  // Detect category from broad keyword matches
+  let category: string | null = null;
+  if (/\b(backpack|backpacks|daypack|rucksack|pack)\b/.test(q)) {
+    category = 'backpacks';
+  } else if (/\b(duffel|duffle|gym bag|tote|sling)\b/.test(q)) {
+    category = 'bags';
+  } else if (/\b(bag|bags)\b/.test(q)) {
+    category = q.includes('travel') || q.includes('pack') ? 'backpacks' : 'bags';
+  } else if (/\b(shoe|shoes|sneaker|sneakers|footwear|runner|running|boots?)\b/.test(q)) {
+    category = 'footwear';
+  } else if (/\b(shirt|tshirt|t-shirt|tee|jacket|shorts?|apparel|clothing|clothes|tights)\b/.test(q)) {
+    category = 'apparel';
+  } else if (/\b(fitness|yoga|bands?|roller|hydration|workout)\b/.test(q)) {
+    category = 'fitness';
+  } else if (/\b(electronic|electronics|phone|mobile|charger|powerbank|power\s*bank|cable|headphone|headphones|earbuds|watch|smartwatch|laptop)\b/.test(q)) {
+    category = 'electronics';
+  } else if (/\b(accessory|accessories|pillow|sleeve|cubes?)\b/.test(q)) {
+    category = 'accessories';
   }
 
-  // Generic fallback
+  // Extract budget
+  let maxBudget: number | null = null;
+  const budgetMatch =
+    q.match(/(?:under|below|less\s*than|within|<=?|₹|\binr)\s*([0-9,]+)/i) ||
+    q.match(/([0-9,]+)\s*(?:inr|rs|rupees)/i) ||
+    q.match(/₹\s*([0-9,]+)/);
+  if (budgetMatch) {
+    maxBudget = parseInt(budgetMatch[1].replace(/,/g, ''), 10);
+  }
+
+  // High-value laptop demo override
+  const isSpendingDemo = q.includes('75,000') || q.includes('75000') || (q.includes('laptop') && !maxBudget);
+  if (isSpendingDemo) {
+    category = 'electronics';
+    maxBudget = 150000;
+  }
+
+  // Extract destination
+  let destination: string | null = null;
+  if (q.includes('bangalore') || q.includes('bengaluru')) destination = 'bangalore';
+  else if (q.includes('mumbai') || q.includes('bombay')) destination = 'mumbai';
+  else if (q.includes('delhi')) destination = 'delhi';
+  else if (q.includes('hyderabad')) destination = 'hyderabad';
+  else if (q.includes('chennai') || q.includes('madras')) destination = 'chennai';
+  else if (q.includes('kolkata') || q.includes('calcutta')) destination = 'kolkata';
+
+  // Extract deadline
+  let deadline: string | null = null;
+  const today = new Date();
+  if (q.includes('friday')) {
+    deadline = formatDate(getNextFriday(today));
+  } else if (q.includes('tomorrow')) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    deadline = formatDate(tomorrow);
+  }
+
+  // Extract hard requirements
+  const hardRequirements: ParsedIntent['hardRequirements'] = [];
+  if (q.includes('waterproof') || q.includes('water-proof') || q.includes('rainproof')) {
+    hardRequirements.push({ attribute: 'waterproof', value: true, operator: 'eq' });
+  }
+  if (q.includes('wireless')) {
+    hardRequirements.push({ attribute: 'wireless', value: true, operator: 'eq' });
+  }
+
+  // Soft preferences
+  const softPreferences: ParsedIntent['softPreferences'] = [];
+  if (category === 'backpacks' && (q.includes('laptop') || q.includes('15.6') || q.includes('15 inch'))) {
+    softPreferences.push({ attribute: 'laptop_size_inches', value: 15.6, weight: 0.5 });
+  }
+  if (isSpendingDemo) {
+    softPreferences.push({ attribute: 'type', value: 'laptop', weight: 1 });
+  }
+
   return {
     rawQuery: query,
-    category: null,
-    budget: { max: null, min: null, currency: 'INR' },
-    destination: null,
-    deliveryDeadline: null,
-    hardRequirements: [],
-    softPreferences: [],
-    clarificationNeeded: true,
-    clarificationQuestion:
-      'OpenAI API is not configured. Please set OPENAI_API_KEY to enable AI intent parsing. ' +
-      'You can try: "Find me a waterproof backpack under ₹4,000 that reaches Bangalore by Friday"',
+    category,
+    budget: { max: maxBudget, min: null, currency: 'INR' },
+    destination,
+    deliveryDeadline: deadline,
+    hardRequirements,
+    softPreferences,
+    clarificationNeeded: false,
   };
 }
 

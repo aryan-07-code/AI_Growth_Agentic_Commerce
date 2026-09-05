@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import prisma from '@/lib/db';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 interface RouteParams {
   params: Promise<{ merchantId: string }>;
@@ -8,6 +9,15 @@ interface RouteParams {
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { merchantId } = await params;
+
+  try {
+    requirePermission(req, 'catalog:propose_changes', merchantId);
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   // Verify merchant exists
   const merchant = await prisma.merchant.findUnique({ where: { id: merchantId } });

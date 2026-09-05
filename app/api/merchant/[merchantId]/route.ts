@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { calculateCommerceScore } from '@/lib/ai/merchant-agent';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 interface RouteParams {
   params: Promise<{ merchantId: string }>;
 }
 
-export async function GET(_req: NextRequest, { params }: RouteParams) {
+export async function GET(req: NextRequest, { params }: RouteParams) {
   const { merchantId } = await params;
+
+  try {
+    // ─── AUTHENTICATION & PERMISSIONS ────────────────────────────────────────
+    requirePermission(req, 'merchant:read', merchantId);
+    requirePermission(req, 'analytics:read', merchantId);
+    requirePermission(req, 'revenue:read', merchantId);
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   const merchant = await prisma.merchant.findUnique({
     where: { id: merchantId },
@@ -66,7 +79,7 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
   };
 
   const failureReasons: Record<string, number> = {};
-  const merchantProductIds = new Set(merchant.products.map(p => p.id));
+  const merchantProductIds = new Set(merchant.products.map((p: { id: string }) => p.id));
   const seenSessions = new Set<string>();
   const sessionsWithDiscovery = new Set<string>();
   const sessionsWithConstraints = new Set<string>();

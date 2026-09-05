@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { logEvent } from '@/lib/audit/events';
 import { EventType } from '@/types/agent';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
 interface RouteParams {
   params: Promise<{ merchantId: string; issueId: string }>;
@@ -9,6 +10,15 @@ interface RouteParams {
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { merchantId, issueId } = await params;
+
+  try {
+    requirePermission(req, 'catalog:apply_changes', merchantId);
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
 
   const body = await req.json().catch(() => ({}));
   const { confirmed } = body;

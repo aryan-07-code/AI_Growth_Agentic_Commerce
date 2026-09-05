@@ -29,7 +29,7 @@ export async function searchProducts(intent: ParsedIntent): Promise<ProductWithD
   }
 
   // Fetch products from DB
-  const products = await prisma.product.findMany({
+  let products = await prisma.product.findMany({
     where: where as any,
     include: {
       merchant: true,
@@ -41,14 +41,16 @@ export async function searchProducts(intent: ParsedIntent): Promise<ProductWithD
     take: 50, // Reasonable limit
   });
 
-  // If category filter returned nothing, try keyword search fallback
-  let finalProducts = products;
-  if (products.length === 0 && category) {
-    finalProducts = await keywordFallbackSearch(intent, budget?.max ?? undefined);
+  // If category filter returned nothing OR category was not set, try keyword search
+  if (products.length === 0 || !category) {
+    const keywordMatches = await keywordFallbackSearch(intent, budget?.max ?? undefined);
+    if (keywordMatches.length > 0) {
+      products = keywordMatches;
+    }
   }
 
   // Map to ProductWithDetails
-  return finalProducts.map(mapProductToDetails);
+  return products.map(mapProductToDetails);
 }
 
 /**
@@ -98,16 +100,37 @@ function buildSearchTerms(intent: ParsedIntent): string[] {
     terms.push(intent.category);
     // Category synonyms
     const synonyms: Record<string, string[]> = {
-      backpack: ['backpacks', 'bag', 'pack'],
-      backpacks: ['backpack', 'bag'],
-      bags: ['bag', 'backpack', 'tote', 'duffel'],
-      shoe: ['shoes', 'footwear', 'sneaker', 'running'],
-      shoes: ['shoe', 'footwear', 'sneaker'],
+      backpack: ['backpacks', 'bag', 'pack', 'daypack'],
+      backpacks: ['backpack', 'bag', 'pack', 'daypack'],
+      bags: ['bag', 'backpack', 'tote', 'duffel', 'sling'],
+      bag: ['bags', 'backpack', 'duffel', 'sling'],
+      shoe: ['shoes', 'footwear', 'sneaker', 'running', 'runner'],
+      shoes: ['shoe', 'footwear', 'sneaker', 'running', 'runner'],
+      footwear: ['shoe', 'shoes', 'sneaker', 'running', 'runner'],
+      apparel: ['tee', 'shirt', 'tshirt', 'shorts', 'jacket', 'running'],
+      clothing: ['tee', 'shirt', 'shorts', 'jacket', 'apparel'],
+      electronics: ['phone', 'charger', 'cable', 'powerbank', 'headphones', 'earbuds', 'watch', 'laptop'],
+      accessories: ['pillow', 'sleeve', 'cubes', 'accessories'],
+      fitness: ['bands', 'roller', 'vest', 'fitness'],
       laptop: ['laptop', 'computer', 'notebook'],
-      phone: ['phone', 'smartphone', 'mobile'],
+      phone: ['phone', 'smartphone', 'mobile', 'charger'],
     };
     const extra = synonyms[intent.category.toLowerCase()] || [];
     terms.push(...extra);
+  }
+
+  // Extract meaningful words from rawQuery
+  if (intent.rawQuery) {
+    const stopWords = new Set([
+      'find', 'me', 'a', 'an', 'the', 'under', 'below', 'above', 'in', 'at', 'by', 'on', 'for', 'with', 'to', 'from',
+      'that', 'reaches', 'delivery', 'deliver', 'buy', 'want', 'need', 'please', 'is', 'it', 'and', 'or', 'of', 'show'
+    ]);
+    const words = intent.rawQuery
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w) && !/^\d+$/.test(w));
+    terms.push(...words);
   }
 
   // Add hard requirement attributes as keywords

@@ -9,7 +9,13 @@ interface PageProps {
 async function getMerchantData(merchantId: string) {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/merchant/${merchantId}`,
-    { cache: 'no-store' }
+    { 
+      cache: 'no-store',
+      headers: {
+        'X-Agent-Role': 'MERCHANT_AGENT',
+        'X-Merchant-Id': merchantId
+      }
+    }
   );
   if (!res.ok) return null;
   return res.json();
@@ -24,18 +30,24 @@ export default async function MerchantDashboardPage({ params }: PageProps) {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between sticky top-0 bg-[#0a0a0a] z-10">
+      <header className="border-b border-[#0c83ff]/20 px-6 py-4 flex items-center justify-between sticky top-0 bg-[#050a14]/85 backdrop-blur-xl z-10">
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#d4a853] flex items-center justify-center text-black font-bold text-sm">AR</div>
-            <span className="font-semibold text-[#e8e0d0]">AgentReady</span>
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#0c83ff] to-[#00d2ff] flex items-center justify-center text-white font-extrabold text-xs shadow-[0_0_12px_rgba(12,131,255,0.4)] group-hover:scale-105 transition-transform">
+              AR
+            </div>
+            <span className="font-heading font-extrabold text-base tracking-tight text-white group-hover:text-[#38bdf8] transition-colors">
+              Agent<span className="gradient-text">Ready</span>
+            </span>
           </Link>
-          <span className="text-[#4a4540]">/</span>
-          <Link href="/merchant" className="text-[#8a8278] text-sm hover:text-[#e8e0d0] transition-colors">Merchants</Link>
-          <span className="text-[#4a4540]">/</span>
-          <span className="text-[#e8e0d0] text-sm font-medium">{data.merchant.name}</span>
+          <span className="text-slate-600">/</span>
+          <Link href="/merchant" className="text-slate-400 text-sm hover:text-white transition-colors">Merchants</Link>
+          <span className="text-slate-600">/</span>
+          <span className="badge badge-blue text-xs font-semibold">{data.merchant.name}</span>
         </div>
-        <Link href="/buyer" className="btn-ghost text-xs">Try as Buyer →</Link>
+        <Link href="/buyer" className="btn-secondary py-1.5 px-3.5 text-xs font-semibold rounded-xl text-slate-300 hover:text-white">
+          ← Launch Buyer Agent
+        </Link>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-10">

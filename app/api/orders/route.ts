@@ -10,10 +10,20 @@ import { checkDelivery } from '@/lib/commerce/delivery';
 import { AgentState, OrderState, PaymentState, EventType } from '@/types/agent';
 import { inrToPaise } from '@/types/razorpay';
 import { nanoid } from 'nanoid';
+import { requirePermission, PermissionError } from '@/lib/auth/permissions';
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
+    requirePermission(req, 'checkout:create');
+  } catch (error) {
+    if (error instanceof PermissionError) {
+      return NextResponse.json({ error: 'FORBIDDEN', message: error.message }, { status: 403 });
+    }
+    throw error;
+  }
+
+  try {
+    const body = await req.json();
     const parsed = CreateOrderRequestSchema.safeParse(body);
 
     if (!parsed.success) {

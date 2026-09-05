@@ -18,10 +18,6 @@ export async function rankProducts(
   intent: ParsedIntent,
   constraintResults: ConstraintCheck[]
 ): Promise<RankingOutput> {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-
   if (eligibleProducts.length === 0) {
     throw new Error('No eligible products to rank');
   }
@@ -31,52 +27,118 @@ export async function rankProducts(
     return buildSingleProductRanking(eligibleProducts[0], constraintResults);
   }
 
-  // Build ranking context
-  const rankingContext = buildRankingContext(eligibleProducts, intent, constraintResults);
+  if (!process.env.OPENAI_API_KEY) {
+    return buildSmartFallbackRanking(eligibleProducts, intent, constraintResults);
+  }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: RANKING_SYSTEM_PROMPT },
-      { role: 'user', content: rankingContext },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.1, // Low temperature for consistent ranking
-    max_tokens: 600,
+  try {
+    // Build ranking context
+    const rankingContext = buildRankingContext(eligibleProducts, intent, constraintResults);
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: RANKING_SYSTEM_PROMPT },
+        { role: 'user', content: rankingContext },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1, // Low temperature for consistent ranking
+      max_tokens: 600,
+    });
+
+    const rawContent = response.choices[0]?.message?.content;
+    if (!rawContent) {
+      throw new Error('OpenAI returned empty response for ranking');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawContent);
+    } catch {
+      throw new Error('OpenAI ranking response was not valid JSON');
+    }
+
+    // Validate schema
+    const validated = RankingOutputSchema.safeParse(parsed);
+    if (!validated.success) {
+      throw new Error(
+        `AI ranking output failed schema validation: ${validated.error.message}`
+      );
+    }
+
+    const ranking = validated.data;
+
+    // CRITICAL: Verify the selected product is in the eligible list
+    const eligibleIds = eligibleProducts.map((p) => p.id);
+    if (!eligibleIds.includes(ranking.selectedProductId)) {
+      throw new Error(
+        `AI selected product "${ranking.selectedProductId}" which is NOT in the eligible list.`
+      );
+    }
+
+    return ranking;
+  } catch (error: any) {
+    console.warn('[ranking] LLM ranking failed, using smart deterministic ranking:', error?.message);
+    return buildSmartFallbackRanking(eligibleProducts, intent, constraintResults);
+  }
+}
+
+/**
+ * Smart fallback ranking when LLM is unavailable or quota is exceeded.
+ */
+function buildSmartFallbackRanking(
+  eligibleProducts: ProductWithDetails[],
+  intent: ParsedIntent,
+  constraintResults: ConstraintCheck[]
+): RankingOutput {
+  const queryLower = (intent.rawQuery || '').toLowerCase();
+  
+  const scored = eligibleProducts.map((p) => {
+    let score = 0;
+    const titleLower = p.title.toLowerCase();
+    const descLower = p.description.toLowerCase();
+
+    const terms = queryLower.split(/\s+/).filter((t) => t.length > 2);
+    for (const term of terms) {
+      if (titleLower.includes(term)) score += 5;
+      else if (descLower.includes(term)) score += 2;
+    }
+
+    if (p.warrantyMonths) score += p.warrantyMonths / 12;
+
+    const cr = constraintResults.find((r) => r.productId === p.id);
+    if (cr?.deliveryEstimate?.eligible) score += 3;
+
+    return { product: p, score, cr };
   });
 
-  const rawContent = response.choices[0]?.message?.content;
-  if (!rawContent) {
-    throw new Error('OpenAI returned empty response for ranking');
+  scored.sort((a, b) => b.score - a.score || a.product.priceInr - b.product.priceInr);
+  const best = scored[0].product;
+  const bestCr = scored[0].cr;
+
+  const passedChecks = Object.entries(bestCr?.checks || {})
+    .filter(([, v]) => v === true)
+    .map(([k]) => k);
+
+  const reasons = [
+    `Best match among ${eligibleProducts.length} eligible product${eligibleProducts.length > 1 ? 's' : ''}`,
+    `Priced at ₹${best.priceInr.toLocaleString('en-IN')}`,
+  ];
+
+  if (best.warrantyMonths) {
+    reasons.push(`Includes ${best.warrantyMonths}-month warranty`);
+  }
+  if (bestCr?.deliveryEstimate?.eligible) {
+    reasons.push(`Estimated delivery by ${bestCr.deliveryEstimate.estimatedDelivery}`);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawContent);
-  } catch {
-    throw new Error('OpenAI ranking response was not valid JSON');
-  }
-
-  // Validate schema
-  const validated = RankingOutputSchema.safeParse(parsed);
-  if (!validated.success) {
-    throw new Error(
-      `AI ranking output failed schema validation: ${validated.error.message}`
-    );
-  }
-
-  const ranking = validated.data;
-
-  // CRITICAL: Verify the selected product is in the eligible list
-  const eligibleIds = eligibleProducts.map((p) => p.id);
-  if (!eligibleIds.includes(ranking.selectedProductId)) {
-    throw new Error(
-      `AI selected product "${ranking.selectedProductId}" which is NOT in the eligible list. ` +
-      `Eligible IDs: ${eligibleIds.join(', ')}`
-    );
-  }
-
-  return ranking;
+  return {
+    selectedProductId: best.id,
+    confidence: 0.88,
+    reasons,
+    tradeoffs: eligibleProducts.length > 1 ? [`Evaluated ${eligibleProducts.length} items to find the best fit`] : [],
+    explanation: `${best.title} is our top recommendation for "${intent.rawQuery}". It meets all requirements and passed ${passedChecks.length} constraint checks.`,
+  };
 }
 
 /**
